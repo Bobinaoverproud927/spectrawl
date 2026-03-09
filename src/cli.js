@@ -20,6 +20,8 @@ async function main() {
       return serve()
     case 'mcp':
       return mcp()
+    case 'install-stealth':
+      return installStealth()
     case 'version':
       console.log('spectrawl v0.1.0')
       return
@@ -114,6 +116,17 @@ async function mcp() {
   server.start()
 }
 
+async function installStealth() {
+  const { install, isInstalled } = require('./browse/install-stealth')
+  if (isInstalled()) {
+    const { getCamoufoxPath } = require('./browse/install-stealth')
+    console.log(`Camoufox already installed at ${getCamoufoxPath()}`)
+    console.log('Spectrawl will use it automatically.')
+    return
+  }
+  await install()
+}
+
 function help() {
   console.log(`
 🌐 Spectrawl — The unified web layer for AI agents.
@@ -124,6 +137,7 @@ Commands:
   status                   Check auth health for all accounts
   serve [--port N]         Start HTTP server
   mcp                      Start MCP server (stdio)
+  install-stealth          Download Camoufox anti-detect browser
   version                  Show version
 
 Examples:
