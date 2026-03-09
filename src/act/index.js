@@ -1,14 +1,17 @@
 /**
  * Act engine — authenticated actions on platforms.
  * Delegates to platform-specific adapters.
+ * Includes rate limiting, deduplication, and dead letter queue.
  */
 
+const crypto = require('crypto')
 const { XAdapter } = require('./adapters/x')
 const { RedditAdapter } = require('./adapters/reddit')
 const { DevtoAdapter } = require('./adapters/devto')
 const { HashnodeAdapter } = require('./adapters/hashnode')
 const { LinkedInAdapter } = require('./adapters/linkedin')
 const { IHAdapter } = require('./adapters/ih')
+const { RateLimiter } = require('./rate-limiter')
 
 const adapters = {
   x: new XAdapter(),
@@ -27,6 +30,10 @@ class ActEngine {
     this.config = config
     this.auth = auth
     this.browse = browse
+    this.rateLimiter = new RateLimiter({
+      dbPath: config.cache?.path?.replace('cache.db', 'ratelimit.db') || './data/ratelimit.db',
+      limits: config.rateLimit || {}
+    })
   }
 
   /**
@@ -62,9 +69,29 @@ class ActEngine {
     }
 
     // Check rate limits
-    const rateLimit = this.config.rateLimit?.[platform]
-    if (rateLimit) {
-      // TODO: implement rate limit checking
+    const rateCheck = this.rateLimiter.check(platform, action, params)
+    if (!rateCheck.allowed) {
+      return {
+        success: false,
+        error: 'rate_limited',
+        detail: rateCheck.reason,
+        retryAfter: rateCheck.retryAfter,
+        suggestion: `Wait ${rateCheck.retryAfter}s or adjust limits in spectrawl.json`
+      }
+    }
+
+    // Check deduplication (same content posted in last 24h)
+    const contentHash = params.text || params.title || params.body
+      ? crypto.createHash('md5').update(`${platform}:${action}:${params.text || ''}${params.title || ''}`).digest('hex')
+      : null
+
+    if (contentHash && this.rateLimiter.isDuplicate(platform, contentHash)) {
+      return {
+        success: false,
+        error: 'duplicate',
+        detail: `Same content already posted to ${platform} in the last 24h`,
+        suggestion: 'Change the content or wait 24h'
+      }
     }
 
     try {
@@ -72,8 +99,20 @@ class ActEngine {
         auth: this.auth,
         browse: this.browse
       })
+
+      // Log success
+      this.rateLimiter.log(platform, action, {
+        account, contentHash, status: 'success'
+      })
+
       return { success: true, ...result }
     } catch (err) {
+      // Log failure
+      this.rateLimiter.log(platform, action, {
+        account, contentHash, status: 'failed',
+        error: err.message, retryCount: params._retryCount || 0
+      })
+
       return {
         success: false,
         error: categorizeError(err),

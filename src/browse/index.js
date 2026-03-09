@@ -3,36 +3,60 @@
  * Playwright (fast) → Camoufox (stealth) when blocked.
  */
 
+const { CamoufoxClient } = require('./camoufox')
+
 class BrowseEngine {
   constructor(config = {}, cache) {
     this.config = config
     this.cache = cache
     this.browser = null
+    this.camoufox = new CamoufoxClient(config.camoufox || {})
+    this._camoufoxAvailable = null // cached check
   }
 
   /**
    * Browse a URL and extract content.
    * @param {string} url
-   * @param {object} opts - { auth, screenshot, extract, stealth, _cookies }
+   * @param {object} opts - { auth, screenshot, extract, stealth, html, _cookies }
    */
   async browse(url, opts = {}) {
     // Check cache
-    if (!opts.noCache) {
+    if (!opts.noCache && !opts.screenshot) {
       const cached = this.cache?.get('scrape', url)
-      if (cached && !opts.screenshot) return { ...cached, cached: true }
+      if (cached) return { ...cached, cached: true }
     }
 
-    const browser = await this._getBrowser(opts.stealth)
+    // If stealth requested or Playwright fails, use Camoufox
+    if (opts.stealth) {
+      return this._browseCamoufox(url, opts)
+    }
+
+    // Default: try Playwright first
+    try {
+      return await this._browsePlaywright(url, opts)
+    } catch (err) {
+      // If blocked/detected, escalate to Camoufox
+      if (this._isBlocked(err)) {
+        console.log(`Playwright blocked on ${url}, escalating to Camoufox`)
+        return this._browseCamoufox(url, opts)
+      }
+      throw err
+    }
+  }
+
+  /**
+   * Browse with Playwright (fast, default).
+   */
+  async _browsePlaywright(url, opts) {
+    const browser = await this._getBrowser()
     const context = await this._createContext(browser, opts)
     const page = await context.newPage()
 
     try {
-      // Inject cookies if auth provided
       if (opts._cookies) {
         await context.addCookies(opts._cookies)
       }
 
-      // Human-like behavior
       if (this.config.humanlike?.scrollBehavior) {
         await this._humanlikeNav(page, url)
       } else {
@@ -41,7 +65,6 @@ class BrowseEngine {
 
       const result = {}
 
-      // Extract text content
       if (opts.extract !== false) {
         result.content = await page.evaluate(() => {
           const main = document.querySelector('main, article, [role="main"]') || document.body
@@ -49,12 +72,10 @@ class BrowseEngine {
         })
       }
 
-      // Get HTML
       if (opts.html) {
         result.html = await page.content()
       }
 
-      // Screenshot
       if (opts.screenshot) {
         result.screenshot = await page.screenshot({ 
           type: 'png',
@@ -62,7 +83,6 @@ class BrowseEngine {
         })
       }
 
-      // Get current cookies (for auth persistence)
       if (opts.saveCookies) {
         result.cookies = await context.cookies()
       }
@@ -70,8 +90,8 @@ class BrowseEngine {
       result.url = page.url()
       result.title = await page.title()
       result.cached = false
+      result.engine = 'playwright'
 
-      // Cache content (not screenshots)
       if (!opts.screenshot) {
         this.cache?.set('scrape', url, { content: result.content, url: result.url, title: result.title })
       }
@@ -83,16 +103,73 @@ class BrowseEngine {
     }
   }
 
-  async _getBrowser(stealth) {
-    if (this.browser) return this.browser
+  /**
+   * Browse with Camoufox (stealth, anti-fingerprint).
+   * Connects to existing Camoufox HTTP service.
+   */
+  async _browseCamoufox(url, opts) {
+    // Check if Camoufox is available
+    if (this._camoufoxAvailable === null) {
+      const health = await this.camoufox.health()
+      this._camoufoxAvailable = health.available
+    }
 
-    // TODO: support Camoufox for stealth mode
+    if (!this._camoufoxAvailable) {
+      throw new Error('Camoufox not available. Start it with: systemctl start camoufox-reddit (or run service.py)')
+    }
+
+    // Inject cookies if needed
+    if (opts._cookies) {
+      await this.camoufox.setCookies(opts._cookies)
+    }
+
+    // Navigate
+    await this.camoufox.navigate(url, { wait: 3000 })
+
+    const result = { engine: 'camoufox', cached: false }
+
+    // Get text content
+    if (opts.extract !== false) {
+      const textData = await this.camoufox.getText()
+      result.content = textData.text
+      result.title = textData.title
+      result.url = textData.url
+    }
+
+    // Screenshot
+    if (opts.screenshot) {
+      const ssData = await this.camoufox.screenshot()
+      result.screenshotPath = ssData.path
+    }
+
+    if (!opts.screenshot) {
+      this.cache?.set('scrape', url, { content: result.content, url: result.url, title: result.title })
+    }
+
+    return result
+  }
+
+  /**
+   * Check if an error indicates the page blocked/detected us.
+   */
+  _isBlocked(err) {
+    const msg = (err.message || '').toLowerCase()
+    return msg.includes('captcha') ||
+           msg.includes('blocked') ||
+           msg.includes('403') ||
+           msg.includes('access denied') ||
+           msg.includes('challenge') ||
+           msg.includes('cloudflare') ||
+           msg.includes('bot detection')
+  }
+
+  async _getBrowser() {
+    if (this.browser) return this.browser
     const { chromium } = require('playwright')
     this.browser = await chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     })
-
     return this.browser
   }
 
@@ -119,11 +196,8 @@ class BrowseEngine {
     const max = delay.maxDelay || 2000
 
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    
-    // Random delay before interaction
     await page.waitForTimeout(min + Math.random() * (max - min))
     
-    // Scroll down naturally
     if (delay.scrollBehavior) {
       await page.evaluate(async () => {
         const distance = Math.floor(Math.random() * 500) + 200
