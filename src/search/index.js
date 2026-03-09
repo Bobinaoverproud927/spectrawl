@@ -4,6 +4,7 @@ const { serperSearch } = require('./engines/serper')
 const { searxngSearch } = require('./engines/searxng')
 const { googleCseSearch } = require('./engines/google-cse')
 const { jinaSearch } = require('./engines/jina')
+const { bingSearch } = require('./engines/bing')
 const { geminiGroundedSearch } = require('./engines/gemini-grounded')
 const { scrapeUrls } = require('./scraper')
 const { Summarizer } = require('./summarizer')
@@ -19,7 +20,8 @@ const ENGINES = {
   'google-cse': googleCseSearch,
   jina: jinaSearch,
   'gemini-grounded': geminiGroundedSearch,
-  gemini: geminiGroundedSearch
+  gemini: geminiGroundedSearch,
+  bing: bingSearch
 }
 
 class SearchEngine {
