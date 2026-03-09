@@ -110,7 +110,7 @@ Answer:`
   }
 
   async _gemini(prompt) {
-    const model = this.model || 'gemini-2.0-flash'
+    const model = this.model || 'gemini-2.5-flash'
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`
     const body = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],

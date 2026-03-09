@@ -167,7 +167,7 @@ class SearchEngine {
     let answer = null
     const summarizer = this.summarizer || (this.reranker ? new Summarizer({
       provider: 'gemini',
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       apiKey: process.env.GEMINI_API_KEY
     }) : null)
 
@@ -177,12 +177,12 @@ class SearchEngine {
 
     const response = {
       answer,
-      sources: results.map(r => ({
+      sources: results.map((r, i) => ({
         title: r.title,
         url: r.url,
         snippet: r.snippet,
         content: r.fullContent?.slice(0, 2000) || r.snippet || '',
-        score: r.score || null
+        score: r.score || r.confidence || Math.max(0.5, 1 - (i * 0.05))
       })),
       queries, // show which queries were used
       cached: false

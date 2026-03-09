@@ -8,7 +8,7 @@ const https = require('https')
 class Reranker {
   constructor(config = {}) {
     this.provider = config.provider || 'gemini'
-    this.model = config.model || 'gemini-2.0-flash'
+    this.model = config.model || 'gemini-2.5-flash'
     this.apiKey = config.apiKey || process.env.GEMINI_API_KEY
   }
 
@@ -55,7 +55,7 @@ No explanation, just the array.`
 
   async _call(prompt) {
     if (this.provider === 'gemini') {
-      const model = this.model || 'gemini-2.0-flash'
+      const model = this.model || 'gemini-2.5-flash'
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`
       const body = JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],

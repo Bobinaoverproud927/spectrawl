@@ -8,7 +8,7 @@ const https = require('https')
 class QueryExpander {
   constructor(config = {}) {
     this.provider = config.provider || 'gemini'
-    this.model = config.model || 'gemini-2.0-flash'
+    this.model = config.model || 'gemini-2.5-flash'
     this.apiKey = config.apiKey || process.env.GEMINI_API_KEY
     this.variants = config.variants || 3
   }
@@ -69,7 +69,7 @@ Example: ["alternative query 1", "alternative query 2", "alternative query 3"]`
 
   async _call(prompt) {
     if (this.provider === 'gemini') {
-      const model = this.model || 'gemini-2.0-flash'
+      const model = this.model || 'gemini-2.5-flash'
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`
       const body = JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
