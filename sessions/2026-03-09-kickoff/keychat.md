@@ -99,3 +99,12 @@
 - Wire proxy rotation (when Fay gets ProxyCheap or similar)
 - Battle-test CAPTCHA solver on real protected sites
 - Streaming answers for perceived speed improvement
+
+## Session 11 — Tone + Launch (Mar 10, ~07:00-07:56 UTC)
+- Xan's feedback: own the speed tradeoff, drop aggressive Tavily framing
+- Decision: "Different tools for different needs" positioning
+- DDG removed from default cascade
+- Full launch push: Reddit (4 subs), Dev.to, OpenClaw Discussions, Discord
+- HN blocked (toonew) — karma builder cron set, post retry cron set
+- Adapter count: 19 individual + 1 generic = 20, covering 24+ platforms
+- Missing: Peerlist, Stacker News, ~8 generic directory selectors

@@ -1,0 +1,7 @@
+node_modules
+.git
+*.md
+!README.md
+test/
+.github/
+.spectrawl/

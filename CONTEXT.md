@@ -3,14 +3,14 @@
 ## What
 Self-hosted Node.js package — unified web layer for AI agents. One API for search, browse, auth, and platform actions. 5,000 free searches/month via Gemini Grounded Search. Open source, MIT, npm installable.
 
-## Status: v0.3.16 — Speed optimized, Camoufox verified, CAPTCHA solver, Tavily fallback
-Answer quality beats Tavily. Summarizer opt-in (not default). 7 adapters live tested.
+## Status: v0.3.19 — Launched, promoted across 6+ platforms
+README toned down per Xan's feedback. Launched on Reddit (4 subs), Dev.to, OpenClaw Discussions + Discord. HN karma building (post in ~4 days). X draft ready. 7 adapters live tested. 19 individual + 1 generic directory adapter.
 
 ## Repo
 **github.com/FayAndXan/spectrawl** (public, 30+ commits)
 
 ## Published
-- npm: `spectrawl@0.3.16` (account: fay_)
+- npm: `spectrawl@0.3.19` (account: fay_)
 
 ## Infrastructure
 - **Spectrawl systemd service**: `spectrawl.service`, localhost:3900, auto-restart
