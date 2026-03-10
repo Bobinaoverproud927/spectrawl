@@ -131,7 +131,7 @@ Answer:`
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`
     const body = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 500 }
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2048 }
     })
 
     const data = await postJson(url, body, { 'Content-Type': 'application/json' })

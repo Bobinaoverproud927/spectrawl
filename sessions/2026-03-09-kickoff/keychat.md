@@ -57,10 +57,18 @@
 - **Speed bottleneck is Gemini API latency (~4s)** — can't fix without different search provider
 - **Serper.dev: 2,500 queries ONE-TIME trial, not monthly** — corrected misconception
 
+## Session 7 Decisions (00:45-02:14 UTC, Mar 10)
+- **Spectrawl as systemd service** — `spectrawl.service`, localhost:3900, auto-restart, credentials isolated in dijiclaw workspace
+- **Credential architecture: Option 1** — other agents call HTTP API, never see raw tokens. Clean separation: Dante writes, Spectrawl publishes.
+- **GITHUB_TOKEN exception** — added to gateway env for all agents (low risk, revertible)
+- **Summarizer default model bug** — was using `gpt-4o-mini` for Gemini calls, silently failing. Fixed with provider-specific defaults.
+- **GitHub adapter uses `repo` as full path** — `FayAndXan/spectrawl` not separate owner/repo params
+- **Fay confirmed: GitHub token OK for all agents** — "I feel GitHub is fine every agent can have access"
+
 ## Next Steps
-- Wire proxy into browse engine automatically
+- Fay creates accounts for untested adapters (Dev.to, HuggingFace, Discord bot first)
+- Live test adapters as accounts come in
+- Wire proxy into browse engine
 - Test X posting through residential proxy
-- Live testing of new adapters (Medium, GitHub, Discord, PH, HN, YouTube)
 - Browser-automation adapters need selector validation
-- GitHub README badges
-- Consider residential proxy for DDG reliability (most users won't have proxy)
+- Consider residential proxy for DDG reliability
