@@ -1,92 +1,98 @@
 # Spectrawl — Project Context
 
 ## What
-Self-hosted Node.js package — unified web layer for AI agents. One API for search, browse, auth, and platform actions. Open source, MIT, npm installable.
+Self-hosted Node.js package — unified web layer for AI agents. One API for search, browse, auth, and platform actions. Free Tavily alternative. Open source, MIT, npm installable.
 
-## Status: v0.3.2 — Deep Search + Gemini Grounded
-Google-quality search via Gemini Grounded, 24 platform adapters, stealth browsing. Published on npm.
+## Status: v0.3.8 — Production-ready search, 24 adapters
+Google-quality search via Gemini Grounded, beats Tavily on result volume, free.
 
 ## Repo
-**github.com/FayAndXan/spectrawl** (public)
+**github.com/FayAndXan/spectrawl** (public, 25+ commits)
 
-## Stack
-Node.js 20+, Playwright, Camoufox (optional), SQLite (better-sqlite3)
+## Published
+- npm: `spectrawl@0.3.8` (account: fay_)
+- npm token: automation type (2FA enabled)
 
 ## What's Built
 
-### Search
-- **Gemini Grounded Search** — primary engine, Google-quality results via Gemini API (free, 5000/month)
-- DDG fallback (free, unlimited)
-- 6 engines wired: SearXNG → DDG → Brave → Serper → Google CSE → Jina
-- **Deep search pipeline:** query expansion → parallel search → rerank → scrape → AI summarize with citations
-- **Fast mode:** snippet-only, ~6s (no scraping)
-- **Deep mode:** full content extraction, ~7-14s
-- Reranker (Gemini Flash, scores 0-1)
-- Query expander (variant queries, skipped for Gemini Grounded)
-- Parallel Gemini + DDG for 15-20 results combined
+### Search (8 engines)
+- **Gemini Grounded Search** (PRIMARY) — Google results via Gemini API, free 5000/month
+- Brave Search API — 2,000/month free
+- DuckDuckGo — free, unreliable from datacenter IPs
+- Bing — scraper, also blocked from datacenter
+- Serper.dev — 2,500 one-time trial (NOT monthly)
+- Google CSE — 100/day free
+- Jina Reader — search + extraction
+- SearXNG — self-hosted, 70+ engines
 
-### Scraping
-- Dual engine: Jina Reader → markdown readability fallback
-- Parallel scraping with per-URL hard timeout
-- Redirect URL resolution for Gemini grounding chunks
+### Deep Search Pipeline
+Query → Gemini Grounded + DDG (parallel, 500ms stagger)
+→ Merge & deduplicate (12-16 results)
+→ Source quality ranking (boost GitHub/SO/HN, penalize SEO spam)
+→ Parallel scraping (Jina → readability → Playwright browser fallback)
+→ AI summarization with [1] [2] citations (gemini-2.5-flash)
 
-### Browse
-- Playwright → Camoufox auto-escalation, human-like timing
-- Three-tier stealth: stealth Playwright → Camoufox binary → remote Camoufox
+### Model Split
+- `gemini-2.0-flash` — grounded search (only model with structured groundingChunks)
+- `gemini-2.5-flash` — summarizer, reranker, query expander (better reasoning)
 
-### Auth
-- SQLite cookie store, multi-account, refresh cron, event hooks
-
-### Platform Adapters (24 total)
-**API-based (14):** X, Reddit, LinkedIn, Dev.to, Hashnode, Medium, GitHub, Discord, Product Hunt, YouTube, HuggingFace, BetaList + IH (browser), HN (cookie form)
-**Browser automation (5):** Quora, AlternativeTo, SaaSHub, DevHunt, IH
-**Generic directory (1 adapter, 14 sites):** MicroLaunch, Uneed, Peerlist, Fazier, BetaPage, etc.
-
-### Infrastructure
-- MCP server (stdio, 5 tools)
-- HTTP server (/search, /browse, /act, /status, /health) port 3900
-- CLI (init, search, status, serve, mcp, version)
-- Events, rate limiter, dedup, dead letter queue, form filler, proxy server
-
-## Published
-- npm: `spectrawl@0.3.2` (account: fay_)
-- GitHub: github.com/FayAndXan/spectrawl (16+ commits)
-
-## Performance vs Tavily
+### Performance vs Tavily
 | | Tavily | Spectrawl |
 |---|---|---|
-| Speed (fast) | ~2s | ~6s |
-| Speed (deep) | ~2s | ~7-14s |
+| Speed (fast) | ~2s | ~6-9s |
 | Quality | Google index | Google via Gemini ✅ |
-| Results | 20+ | 10-20 ✅ |
+| Results | 10 | 12-16 ✅ |
 | Citations | ✅ | ✅ |
-| Cost | $0.01/query | **Free** |
-| Stealth browse | ❌ | ✅ |
+| Cost | $0.01/query | Free ✅ |
+| Stealth | ❌ | ✅ |
+| Auth+posting | ❌ | 24 adapters ✅ |
+| Source ranking | ❌ | ✅ |
+| Cached repeat | ❌ | <1ms ✅ |
+
+### Browse (3-tier stealth)
+1. playwright-extra + stealth plugin (default)
+2. Camoufox binary download (`npx spectrawl install-stealth`)
+3. Remote Camoufox service
+
+### Auth
+SQLite cookie store, multi-account, refresh cron, event hooks
+
+### Platform Adapters (24)
+API-based: X, Reddit, LinkedIn, Dev.to, Hashnode, Medium, GitHub, Discord, PH, YouTube, HuggingFace, BetaList, HN
+Browser: Quora, AlternativeTo, SaaSHub, DevHunt, IH
+Generic directory: 14 sites (MicroLaunch, Uneed, Peerlist, etc.)
+
+### Infrastructure
+MCP server (5 tools), HTTP server (port 3900), CLI, proxy server, rate limiter, dedup, dead letter queue, source ranker
 
 ## Key Requirement
-- Best experience requires `GEMINI_API_KEY` (free signup)
-- Without Gemini: DDG-only search, no AI features (still functional)
-- Only Gemini models have grounding (built-in Google Search) — no other LLM provider offers this
-- Summarizer supports any LLM: OpenAI, Anthropic, MiniMax, xAI, Ollama, Gemini
+- Best experience: `GEMINI_API_KEY` (free signup)
+- Without Gemini: DDG-only, no AI features (unreliable from datacenter)
+- Summarizer works with any LLM (OpenAI, Anthropic, MiniMax, xAI, Ollama)
+- Only Gemini has grounding — no other LLM can search Google
 
-## What's NOT Built / Remaining
-- Speed gap: 6s vs Tavily's 2s (Gemini API latency ~4s, can't fix)
-- Reranker scoring all 1.0 — should skip when Gemini Grounded provides confidence scores
-- Wire proxy into browse engine automatically
-- Test X posting through residential proxy
-- Live test new adapters (Medium, GitHub, Discord, PH, HN, YouTube)
-- Browser automation selectors need validation
-- Make reranker/expander provider-agnostic (not just Gemini)
-- Auto-fallback to Playwright when readability extraction returns <200 chars
+## Known Issues
+- Speed: 6-9s vs Tavily's 2s (Gemini API latency ~4s, unfixable)
+- DDG: CAPTCHA'd from datacenter IPs after 1-2 requests
+- Bing: same datacenter blocking as DDG
+- Brave: untested (wired, needs API key to verify)
+- Browser automation adapters: selectors unvalidated (Quora, AlternativeTo, SaaSHub, DevHunt)
+
+## What's NOT Built
+- Proxy auto-wiring into browse engine
+- X posting via residential proxy
+- Live adapter testing (Medium, GitHub, Discord, PH, HN, YouTube)
+- npm/PyPI publish adapters
 
 ## Relationship to xanOS
-Open-source infra that xanOS uses internally. XanLens audits → xanOS generates → Spectrawl publishes.
+Open-source infra that xanOS uses. XanLens audits → xanOS generates → Spectrawl publishes.
 
 ## Key Files
-- `src/search/engines/gemini-grounded.js` — Gemini Grounded Search
+- `src/search/engines/gemini-grounded.js` — primary search engine
 - `src/search/index.js` — search engine + deepSearch
-- `src/search/reranker.js`, `src/search/query-expander.js`, `src/search/summarizer.js`
-- `src/search/scraper.js` — Jina + readability, parallel
-- `src/browse/` — Playwright + Camoufox
+- `src/search/source-ranker.js` — domain trust scoring
+- `src/search/summarizer.js` — multi-provider LLM answers
+- `src/search/scraper.js` — Jina + readability + Playwright fallback
+- `src/index.js` — main entry (accepts config objects now)
+- `src/config.js` — defaults (cascade: gemini-grounded → brave → ddg)
 - `src/act/adapters/*.js` — 24 platform adapters
-- `src/mcp.js`, `src/server.js`, `src/cli.js`

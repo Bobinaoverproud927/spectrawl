@@ -7,9 +7,21 @@ const https = require('https')
 class Summarizer {
   constructor(config = {}) {
     this.provider = config.provider || 'openai'
-    this.model = config.model || 'gpt-4o-mini'
+    this.model = config.model || this._defaultModel()
     this.apiKey = config.apiKey || process.env[this._envKey()]
     this.baseUrl = config.baseUrl || null
+  }
+
+  _defaultModel() {
+    const defaults = {
+      openai: 'gpt-4o-mini',
+      anthropic: 'claude-3-5-haiku-20241022',
+      gemini: 'gemini-2.5-flash',
+      minimax: 'MiniMax-Text-01',
+      xai: 'grok-3-mini-fast',
+      ollama: 'llama3'
+    }
+    return defaults[this.provider] || 'gpt-4o-mini'
   }
 
   _envKey() {

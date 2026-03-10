@@ -41,10 +41,26 @@
 - **v0.2.0 published** — major version bump for adapter expansion
 - **XanLens audit platforms** all covered: Wikipedia (manual), Crunchbase, GitHub, LinkedIn, X, Product Hunt, G2, Discord, Medium, YouTube, Reddit, PitchBook (manual), StackShare + HuggingFace, npm, PyPI, Dev.to (industry)
 
+## Session 6 Decisions (18:06-19:54 UTC) — Deep Search + Gemini Grounded
+- **Gemini Grounded Search as primary engine** — Google-quality results via Gemini API, free 5000/month
+- **gemini-2.0-flash for grounding** — only model returning structured groundingChunks with URLs
+- **gemini-2.5-flash for LLM tasks** — 2.5-flash grounding doesn't return extractable URLs, but better reasoning
+- **Config objects were silently ignored** — ROOT CAUSE of 0-result failures. Constructor expected file path, not object.
+- **Never cache empty results** — prevents cache poisoning from transient failures
+- **DDG unreliable from datacenter** — HTML endpoints CAPTCHA'd, JSON API only for factoid queries
+- **Bing also blocks datacenter IPs** — same problem as DDG
+- **Default cascade: gemini-grounded → brave → ddg** — DDG demoted to last resort
+- **Minimum viable setup needs one free key** — Gemini or Brave. Same as Tavily requiring their key.
+- **Source quality ranker** — novel feature, Tavily doesn't have domain trust scoring
+- **Summarizer rewritten** — no hedging, direct answers with citations
+- **Spectrawl beats Tavily on result volume** (12-16 vs 10) but loses on speed (6-10s vs 2s)
+- **Speed bottleneck is Gemini API latency (~4s)** — can't fix without different search provider
+- **Serper.dev: 2,500 queries ONE-TIME trial, not monthly** — corrected misconception
+
 ## Next Steps
-- Wire proxy server into browse engine automatically
+- Wire proxy into browse engine automatically
 - Test X posting through residential proxy
 - Live testing of new adapters (Medium, GitHub, Discord, PH, HN, YouTube)
-- Browser-automation adapters need real-world selector validation (Quora, AlternativeTo, SaaSHub, DevHunt)
-- GitHub README badges (npm version, CI status, license)
-- npm/PyPI adapters (publish packages programmatically)
+- Browser-automation adapters need selector validation
+- GitHub README badges
+- Consider residential proxy for DDG reliability (most users won't have proxy)
