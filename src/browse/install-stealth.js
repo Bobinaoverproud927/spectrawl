@@ -114,15 +114,60 @@ async function install() {
   // Download
   await download(url, zipPath)
 
-  // Extract
+  // Extract — try multiple methods (large zip64 files break some tools)
   console.log('  Extracting...')
   fs.mkdirSync(extractDir, { recursive: true })
 
-  try {
-    execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'pipe' })
-  } catch (e) {
-    // Try with built-in tools on systems without unzip
-    execSync(`python3 -c "import zipfile; zipfile.ZipFile('${zipPath}').extractall('${extractDir}')"`, { stdio: 'pipe' })
+  const extractMethods = [
+    // 1. unzip (most common on Linux/Mac)
+    () => execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'pipe' }),
+    // 2. 7z (handles zip64 reliably)
+    () => execSync(`7z x -o"${extractDir}" -y "${zipPath}"`, { stdio: 'pipe' }),
+    // 3. bsdtar (available on many systems, handles zip64)
+    () => execSync(`bsdtar -xf "${zipPath}" -C "${extractDir}"`, { stdio: 'pipe' }),
+    // 4. Node.js built-in (no external deps, handles zip64)
+    () => {
+      const { execSync: es } = require('child_process')
+      es(`node -e "
+        const fs = require('fs');
+        const zlib = require('zlib');
+        const { execFileSync } = require('child_process');
+        // Use jar if available (JDK)
+        execFileSync('jar', ['xf', '${zipPath}'], { cwd: '${extractDir}', stdio: 'pipe' });
+      "`, { stdio: 'pipe' })
+    },
+    // 5. Python with explicit zip64 support
+    () => execSync(`python3 -c "
+import zipfile, sys
+try:
+    z = zipfile.ZipFile('${zipPath}', allowZip64=True)
+    z.extractall('${extractDir}')
+    z.close()
+except Exception as e:
+    print(f'Python extract failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"`, { stdio: 'pipe' }),
+  ]
+
+  let extracted = false
+  for (const method of extractMethods) {
+    try {
+      method()
+      extracted = true
+      break
+    } catch (e) {
+      continue
+    }
+  }
+
+  if (!extracted) {
+    fs.unlinkSync(zipPath)
+    throw new Error(
+      'Could not extract Camoufox archive. Install one of: unzip, 7z, or bsdtar.\n' +
+      '  Ubuntu/Debian: sudo apt-get install unzip\n' +
+      '  macOS: brew install p7zip\n' +
+      '  Alpine: apk add unzip'
+    )
   }
 
   // Clean up zip

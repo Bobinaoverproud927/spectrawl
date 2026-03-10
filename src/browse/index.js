@@ -12,6 +12,7 @@ const os = require('os')
 const path = require('path')
 const { CamoufoxClient } = require('./camoufox')
 const { getCamoufoxPath, isInstalled } = require('./install-stealth')
+const { CaptchaSolver } = require('./captcha-solver')
 
 class BrowseEngine {
   constructor(config = {}, cache) {
@@ -22,6 +23,9 @@ class BrowseEngine {
     // Remote Camoufox service (existing deployment)
     this.remoteCamoufox = config.camoufox?.url ? new CamoufoxClient(config.camoufox) : null
     this._remoteCamoufoxAvailable = null
+
+    // CAPTCHA solver (Gemini Vision fallback)
+    this.captchaSolver = new CaptchaSolver(config.captcha || {})
 
     // Which engine we're using
     this._engine = null

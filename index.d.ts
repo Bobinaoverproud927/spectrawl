@@ -17,6 +17,7 @@ declare module 'spectrawl' {
       defaultEngine?: string
       proxy?: { type: string; host: string; port: number; username?: string; password?: string }
       humanlike?: { minDelay?: number; maxDelay?: number; scrollBehavior?: boolean }
+      captcha?: { apiKey?: string; model?: string }
     }
     auth?: {
       refreshInterval?: string

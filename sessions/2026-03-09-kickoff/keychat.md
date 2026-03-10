@@ -76,9 +76,17 @@
 - **Answer quality beats Tavily** — 12 items + citations vs 3 items + none. Verified with real queries.
 - **Fay: "don't claim free"** — README updated to "5,000 free searches/month"
 
+## Session 9 Decisions (05:30-05:47 UTC, Mar 10) — Speed + Tavily
+- **Tavily engine built and integrated** — `src/search/engines/tavily.js`, in default cascade
+- **Speed: 16s → ~10s** — skip DDG when Gemini has enough, 5s scrape timeout
+- **New modes**: `snippets` (6s, no scraping), `fast` (5s, no scraping or summary)
+- **5s scrape timeout** — Fay chose quality over speed (was 3s, bumped to 5s)
+- **Spectrawl = for agents, not scripts** — agents need rich sources, not pre-chewed answers. Tavily is better for scripts.
+- **Compaction model set to Sonnet** — Opus was timing out on 167K context compaction
+
 ## Next Steps
-- Build Tavily as optional search engine in cascade
-- Cut speed (16s → target <10s)
-- Fay creates accounts for remaining adapters (Discord bot, LinkedIn, HN, etc.)
+- Further speed optimization (streaming answers, pre-indexing)
+- Test remaining 14 untested adapters (need accounts)
 - Wire proxy into browse engine
 - Browser-automation adapters need selector validation
+- README update with speed benchmarks and mode documentation

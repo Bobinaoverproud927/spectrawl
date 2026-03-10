@@ -3,14 +3,14 @@
 ## What
 Self-hosted Node.js package — unified web layer for AI agents. One API for search, browse, auth, and platform actions. 5,000 free searches/month via Gemini Grounded Search. Open source, MIT, npm installable.
 
-## Status: v0.3.13 — Sources-only default, honest pricing
+## Status: v0.3.15 — Speed optimized, Tavily fallback, honest pricing
 Answer quality beats Tavily. Summarizer opt-in (not default). 7 adapters live tested.
 
 ## Repo
 **github.com/FayAndXan/spectrawl** (public, 30+ commits)
 
 ## Published
-- npm: `spectrawl@0.3.13` (account: fay_)
+- npm: `spectrawl@0.3.15` (account: fay_)
 
 ## Infrastructure
 - **Spectrawl systemd service**: `spectrawl.service`, localhost:3900, auto-restart
@@ -32,7 +32,10 @@ Answer quality beats Tavily. Summarizer opt-in (not default). 7 adapters live te
 - **Summarizer OFF by default** — agents have their own LLM. Double-summarizing = double cost. `{ summarize: true }` opt-in.
 - **One-time key warning** — when no GEMINI_API_KEY, prints helpful message with link
 - **No truly free search at scale** — every API costs something. Gemini free tier is the best deal.
-- **Tavily as optional fallback** — decided, not yet built
+- **Tavily as fallback engine** — built and integrated, in default cascade
+- **Speed optimized** — 16s → ~10s full, ~6s snippets mode
+- **5s scrape timeout** — quality over speed (Fay's call)
+- **For agents, not scripts** — rich sources > pre-chewed answers
 
 ## What's Built & Validated
 
@@ -42,9 +45,10 @@ Answer quality beats Tavily. Summarizer opt-in (not default). 7 adapters live te
 - Source quality ranker: boost GitHub/SO/HN, penalize SEO farms
 
 ### Answer Quality (verified)
-- Spectrawl: 19 sources, 12 items named, inline [1][2][3] citations
-- Tavily: 10 sources, 3 items named, no citations
-- Speed: 12-17s vs Tavily's 2s (Gemini API latency)
+- Spectrawl: 10 sources, full page content scraped, inline [1][2][3] citations (with summarizer)
+- Tavily: 10 sources, snippets only, no citations
+- Speed: ~10s full / ~6s snippets vs Tavily's 2s
+- Modes: `full` (~10s), `snippets` (~6s), `fast` (~5s)
 
 ### HTTP Server ✅
 - All 5 endpoints tested: /health, /status, /search, /browse, /act
@@ -82,10 +86,11 @@ Answer quality beats Tavily. Summarizer opt-in (not default). 7 adapters live te
 - HuggingFace: ✅
 
 ## Next Steps
-1. Build Tavily as optional search engine in cascade
-2. Cut speed (16s → target <10s)
-3. Test remaining adapters as accounts come in
+1. Further speed optimization (streaming answers, pre-indexing)
+2. README update with speed benchmarks and mode docs
+3. Test remaining 14 untested adapters as accounts come in
 4. Wire proxy into browse engine
+5. Browser-automation adapter selector validation
 
 ## Key Files
 - `src/search/index.js` — search engine, deepSearch (summarizer opt-in)
