@@ -37,6 +37,13 @@ class SearchEngine {
     this.reranker = geminiKey ? new Reranker({ apiKey: geminiKey, ...config.reranker }) : null
     this.expander = geminiKey ? new QueryExpander({ apiKey: geminiKey, ...config.expander }) : null
     this.sourceRanker = new SourceRanker(config.sourceRanker || {})
+
+    // One-time warning if no Gemini key
+    if (!geminiKey && !SearchEngine._keyWarned) {
+      SearchEngine._keyWarned = true
+      console.warn('\n⚠️  No GEMINI_API_KEY set. Using DDG fallback (limited quality, unreliable from servers).')
+      console.warn('   Get a free key (no credit card): https://aistudio.google.com/apikey\n')
+    }
   }
 
   /**
