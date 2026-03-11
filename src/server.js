@@ -52,6 +52,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, result)
     }
 
+    if (req.method === 'POST' && path === '/crawl') {
+      const body = await readBody(req)
+      const { url: targetUrl, depth, maxPages, format, delay, stealth, scope, auth } = body
+      if (!targetUrl) return error(res, 400, 'url is required')
+      const result = await spectrawl.crawl(targetUrl, { depth, maxPages, format, delay, stealth, scope, auth })
+      return json(res, result)
+    }
+
     if (req.method === 'POST' && path === '/act') {
       const body = await readBody(req)
       const { platform, action, ...params } = body

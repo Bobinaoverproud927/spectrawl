@@ -7,6 +7,7 @@ const { SearchEngine } = require('./search')
 const { BrowseEngine } = require('./browse')
 const { AuthManager } = require('./auth')
 const { ActEngine } = require('./act')
+const { CrawlEngine } = require('./crawl')
 const { Cache } = require('./cache')
 const { EventEmitter, EVENTS } = require('./events')
 const { CookieRefresher } = require('./auth/refresh')
@@ -36,6 +37,7 @@ class Spectrawl {
     this.browseEngine = new BrowseEngine(this.config.browse, this.cache)
     this.auth = new AuthManager(this.config.auth)
     this.actEngine = new ActEngine(this.config, this.auth, this.browseEngine)
+    this.crawlEngine = new CrawlEngine(this.browseEngine, this.cache)
     this.refresher = new CookieRefresher(this.auth, this.events, this.config.auth)
   }
 
@@ -73,6 +75,21 @@ class Spectrawl {
       opts._cookies = cookies
     }
     return this.browseEngine.browse(url, opts)
+  }
+
+  /**
+   * Crawl a website recursively. Returns clean markdown for every page.
+   * Uses Jina Reader (free) with Playwright stealth fallback.
+   * @param {string} url - Starting URL
+   * @param {object} opts - { depth, maxPages, format, delay, stealth, scope, auth }
+   * @returns {Promise<{pages[], stats, failed?}>}
+   */
+  async crawl(url, opts = {}) {
+    let cookies = null
+    if (opts.auth) {
+      cookies = await this.auth.getCookies(opts.auth)
+    }
+    return this.crawlEngine.crawl(url, opts, cookies)
   }
 
   /**

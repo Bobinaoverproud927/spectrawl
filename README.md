@@ -2,7 +2,7 @@
 
 The unified web layer for AI agents. Search, browse, authenticate, and act on platforms — one package, self-hosted.
 
-**5,000 free searches/month** via Gemini Grounded Search. Full page scraping, stealth browsing, 19 platform adapters.
+**5,000 free searches/month** via Gemini Grounded Search. Full site crawling, stealth browsing, 19 platform adapters.
 
 ## What It Does
 
@@ -57,6 +57,7 @@ Different tools for different needs.
 | Stealth browsing | No | Yes (Camoufox + Playwright) |
 | Platform posting | No | 19 adapters |
 | Auth management | No | Cookie store + auto-refresh |
+| Site crawling | No | ✅ Free (Jina + Playwright) |
 | Cached repeats | No | <1ms |
 
 **Tavily** is fast and simple — great for agents that need quick answers. **Spectrawl** returns richer data and does more (browse, auth, post) — but it's slower. Choose based on your use case.
@@ -108,6 +109,41 @@ console.log(page.screenshot)    // PNG buffer (if requested)
 ```
 
 Auto-fallback: if Jina and readability return too little content (<200 chars), Spectrawl renders the page with Playwright and extracts from the rendered DOM. Tavily can't do this — they fail on JS-heavy pages.
+
+## Crawl
+
+Give your agent the ability to read an entire website in one call. Free, no API costs.
+
+Uses [Jina Reader](https://jina.ai/reader) (free, unlimited) with Playwright stealth fallback for JS-heavy sites.
+
+```js
+// Crawl a docs site — returns clean markdown for every page
+const result = await web.crawl('https://docs.example.com', {
+  depth: 2,       // how many levels deep (default: 1)
+  maxPages: 50,   // max pages to crawl (default: 50)
+  format: 'markdown', // markdown | html | json
+  delay: 300,     // ms between requests (be polite)
+  stealth: false, // use Camoufox for anti-detect
+  auth: 'account' // use stored cookies (crawl behind logins)
+})
+
+result.pages   // [{ url, title, content, links, depth }]
+result.stats   // { total, crawled, failed, duration }
+```
+
+**vs Cloudflare's /crawl:**
+- ✅ Free (self-hosted, no per-request cost)
+- ✅ Crawls sites that block Cloudflare IPs
+- ✅ Auth-aware — crawl behind login walls with stored cookies
+- ✅ Stealth mode — bypasses bot detection
+- ✅ Works for AI agents (50-200 pages, not millions)
+
+**HTTP API:**
+```bash
+curl -X POST http://localhost:3900/crawl \
+  -H "Content-Type: application/json" \
+  -d '{ "url": "https://docs.example.com", "depth": 2, "maxPages": 50 }'
+```
 
 ## Auth
 
