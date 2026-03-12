@@ -164,8 +164,17 @@ class BrowseEngine {
 
       result.url = page.url()
       result.title = await page.title()
+      result.statusCode = null // playwright doesn't expose easily, but we detect blocks below
       result.cached = false
       result.engine = this._engine
+
+      // Detect block pages (Cloudflare, Akamai, etc.)
+      const blockInfo = detectBlockPage(result.content, result.title, result.html, result.url)
+      if (blockInfo) {
+        result.blocked = true
+        result.blockType = blockInfo.type
+        result.blockDetail = blockInfo.detail
+      }
 
       if (!opts.screenshot) {
         this.cache?.set('scrape', url, { content: result.content, url: result.url, title: result.title })
@@ -286,6 +295,83 @@ class BrowseEngine {
       this.browser = null
     }
   }
+}
+
+/**
+ * Detect block/challenge pages from CDNs and bot protection services.
+ * Returns { type, detail } if blocked, null if clean.
+ */
+function detectBlockPage(content, title, html, url) {
+  const text = (content || '').toLowerCase()
+  const titleLower = (title || '').toLowerCase()
+  const htmlLower = (html || '').toLowerCase()
+
+  // Cloudflare
+  if (htmlLower.includes('cf-error-details') || htmlLower.includes('cf_chl_opt') ||
+      text.includes('attention required') && text.includes('cloudflare') ||
+      text.includes('checking if the site connection is secure') ||
+      titleLower.includes('just a moment') && htmlLower.includes('cloudflare') ||
+      text.includes('ray id:') && text.includes('cloudflare')) {
+    return { type: 'cloudflare', detail: 'Cloudflare bot challenge or block page detected' }
+  }
+
+  // Cloudflare RFC 9457 structured error (new format)
+  if (htmlLower.includes('application/problem+json') || 
+      text.includes('error 1') && text.includes('cloudflare') ||
+      htmlLower.includes('"type":') && htmlLower.includes('cloudflare.com/errors/')) {
+    return { type: 'cloudflare-rfc9457', detail: 'Cloudflare structured error response (RFC 9457)' }
+  }
+
+  // Akamai
+  if (text.includes('access denied') && htmlLower.includes('akamai') ||
+      htmlLower.includes('akamaighost') ||
+      text.includes('reference #') && text.includes('access denied')) {
+    return { type: 'akamai', detail: 'Akamai bot detection triggered' }
+  }
+
+  // AWS WAF
+  if (text.includes('request blocked') && htmlLower.includes('aws') ||
+      htmlLower.includes('awswaf')) {
+    return { type: 'aws-waf', detail: 'AWS WAF blocked the request' }
+  }
+
+  // Imperva / Incapsula
+  if (htmlLower.includes('incapsula') || htmlLower.includes('imperva') ||
+      text.includes('request unsuccessful') && text.includes('incapsula')) {
+    return { type: 'imperva', detail: 'Imperva/Incapsula bot detection triggered' }
+  }
+
+  // DataDome
+  if (htmlLower.includes('datadome') || htmlLower.includes('dd.js')) {
+    return { type: 'datadome', detail: 'DataDome bot detection triggered' }
+  }
+
+  // PerimeterX / HUMAN
+  if (htmlLower.includes('perimeterx') || htmlLower.includes('px-captcha') ||
+      htmlLower.includes('human security')) {
+    return { type: 'perimeterx', detail: 'PerimeterX/HUMAN bot detection triggered' }
+  }
+
+  // hCaptcha challenge
+  if (htmlLower.includes('hcaptcha.com') && htmlLower.includes('h-captcha')) {
+    return { type: 'hcaptcha', detail: 'hCaptcha challenge page' }
+  }
+
+  // reCAPTCHA challenge (standalone, not embedded)
+  if (htmlLower.includes('recaptcha') && text.length < 500 &&
+      (titleLower === '' || titleLower.includes('blocked') || titleLower.includes('verify'))) {
+    return { type: 'recaptcha', detail: 'reCAPTCHA challenge page' }
+  }
+
+  // Generic bot detection signals
+  if (text.length < 200 && (
+      text.includes('access denied') || text.includes('403 forbidden') ||
+      text.includes('bot detected') || text.includes('automated access') ||
+      text.includes('please verify you are human') || text.includes('are you a robot'))) {
+    return { type: 'generic', detail: 'Generic bot detection or access denied page' }
+  }
+
+  return null
 }
 
 module.exports = { BrowseEngine }

@@ -118,3 +118,16 @@
 - Glama has no API — browser-only GitHub OAuth submission
 - Published spectrawl@0.3.20
 - Pending: Glama approval → update MCP PR with Glama URL
+
+## Session 13 — Crawl Engine v2 (Mar 12, ~04:48-05:52 UTC)
+- Rebuilt crawl engine: removed Jina Reader, Camoufox-only
+- Fixed scope filtering bug (undefined opts overriding defaults via spread)
+- Added: includePatterns/excludePatterns, merge mode, async jobs
+- Added auto-parallel: detects system RAM, calculates safe concurrency
+- Added fastMode to browse engine (reduced stealth delays for crawling)
+- GET /crawl/capacity endpoint for system estimates
+- Published 0.4.1 → 0.4.2 → 0.4.3
+- Repo made public (was private, CI checkout failing)
+- Decision: don't chase Cloudflare on throughput — our edge is stealth + free + no dependencies
+- Decision: Opus set as default model (was Sonnet)
+- Tweet drafted: honest CF vs Spectrawl comparison

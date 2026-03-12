@@ -276,15 +276,32 @@ class CrawlEngine {
 
   async _fetchPage(url, config, cookies) {
     try {
-      const result = await this.browseEngine.browse(url, {
+      const browseOpts = {
         stealth: config.stealth,
         _cookies: cookies,
         timeout: config.timeout,
         html: true,
         noCache: true,
-        fastMode: true  // crawl mode: reduced delays for speed
-      })
+        fastMode: true
+      }
+      let result = await this.browseEngine.browse(url, browseOpts)
+
+      // Auto-retry with full stealth if blocked
+      if (result?.blocked && browseOpts.fastMode) {
+        console.log(`[crawl] Block detected on ${url} (${result.blockType}) — retrying with full stealth`)
+        result = await this.browseEngine.browse(url, {
+          ...browseOpts,
+          fastMode: false,
+          stealth: true,
+          camoufox: true
+        })
+      }
+
       if (result?.content) {
+        // Skip if still blocked after retry
+        if (result.blocked) {
+          throw new Error(`Blocked by ${result.blockType}: ${result.blockDetail}`)
+        }
         const linkSource = result.html || result.content
         return {
           title: result.title || '',

@@ -159,7 +159,15 @@ const server = http.createServer(async (req, res) => {
     return error(res, 404, 'Not found')
   } catch (err) {
     console.error('Server error:', err)
-    return error(res, 500, err.message)
+    const status = err.statusCode || 500
+    const extra = {}
+    if (err.retryable) extra.retryable = true
+    if (err.suggestion) extra.suggestion = err.suggestion
+    if (err.blocked) {
+      extra.retryable = true
+      extra.suggestion = 'Retry with stealth:true or use Camoufox engine'
+    }
+    return error(res, status, err.message, extra)
   }
 })
 
@@ -168,8 +176,29 @@ function json(res, data, status = 200) {
   res.end(JSON.stringify(data))
 }
 
-function error(res, status, message) {
-  json(res, { error: message }, status)
+/**
+ * RFC 9457-style structured error responses.
+ * Machine-readable for AI agents consuming our API.
+ */
+function error(res, status, message, extra = {}) {
+  const errorTypes = {
+    400: 'bad-request',
+    401: 'unauthorized',
+    403: 'forbidden',
+    404: 'not-found',
+    429: 'rate-limited',
+    500: 'internal-error',
+    502: 'upstream-error',
+    503: 'service-unavailable'
+  }
+  const body = {
+    type: `https://spectrawl.dev/errors/${errorTypes[status] || 'unknown'}`,
+    status,
+    title: errorTypes[status] ? errorTypes[status].replace(/-/g, ' ') : 'error',
+    detail: message,
+    ...extra
+  }
+  json(res, body, status)
 }
 
 function readBody(req) {
