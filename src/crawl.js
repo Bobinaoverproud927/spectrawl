@@ -3,22 +3,30 @@
  * Multi-page website crawler using our own browse engine (Camoufox).
  * No external dependencies (no Jina, no Cloudflare).
  * Supports sync + async (job-based) modes.
+ * Auto-detects system RAM and parallelizes crawling accordingly.
  */
 
 const crypto = require('crypto')
+const os = require('os')
+
+// ~250MB per browser tab (Camoufox average)
+const MB_PER_TAB = 250
+// Reserve this much RAM for OS + other processes
+const RESERVED_MB = 1500
 
 const DEFAULT_OPTS = {
   depth: 2,
   maxPages: 50,
-  format: 'markdown',   // markdown | html | json
-  delay: 500,           // ms between requests
-  stealth: true,        // use stealth browsing by default
-  scope: 'domain',      // domain | prefix | any
+  format: 'markdown',
+  delay: 300,            // ms between batch launches
+  stealth: true,
+  scope: 'domain',
   timeout: 30000,
+  concurrency: 'auto',   // 'auto' | number — auto-detect from RAM
   includeLinks: true,
-  includePatterns: [],   // wildcard patterns to include
-  excludePatterns: [],   // wildcard patterns to exclude
-  merge: false,          // merge all pages into single result
+  includePatterns: [],
+  excludePatterns: [],
+  merge: false,
   skipPatterns: [
     /\.(png|jpg|jpeg|gif|svg|ico|webp|pdf|zip|gz|tar|mp4|mp3|woff|woff2|ttf|css|js)(\?|$)/i,
     /\/_next\//,
@@ -35,6 +43,21 @@ const DEFAULT_OPTS = {
 // In-memory job store for async crawls
 const jobs = new Map()
 
+/**
+ * Calculate max safe concurrency based on available system RAM.
+ */
+function detectConcurrency() {
+  const totalMB = Math.floor(os.totalmem() / 1024 / 1024)
+  const freeMB = Math.floor(os.freemem() / 1024 / 1024)
+  // Use the lower of: (free RAM) or (total - reserved)
+  const availableMB = Math.min(freeMB, totalMB - RESERVED_MB)
+  const maxTabs = Math.max(1, Math.floor(availableMB / MB_PER_TAB))
+  // Cap at 10 — diminishing returns and politeness
+  const concurrency = Math.min(maxTabs, 10)
+  console.log(`[crawl] RAM: ${totalMB}MB total, ${freeMB}MB free → ${concurrency} concurrent tabs`)
+  return concurrency
+}
+
 class CrawlEngine {
   constructor(browseEngine, cache) {
     this.browseEngine = browseEngine
@@ -42,15 +65,20 @@ class CrawlEngine {
   }
 
   /**
-   * Crawl a website starting from a URL (synchronous — waits for completion).
+   * Crawl a website starting from a URL.
+   * Automatically parallelizes based on available RAM.
    */
   async crawl(startUrl, opts = {}, cookies = null) {
-    // Filter out undefined values from opts to avoid overriding defaults
     const cleanOpts = Object.fromEntries(
       Object.entries(opts).filter(([_, v]) => v !== undefined)
     )
     const config = { ...DEFAULT_OPTS, ...cleanOpts }
     const startTime = Date.now()
+
+    // Determine concurrency
+    const concurrency = config.concurrency === 'auto'
+      ? detectConcurrency()
+      : Math.max(1, Math.min(config.concurrency, 10))
 
     const startParsed = new URL(startUrl)
     const baseDomain = startParsed.hostname
@@ -60,23 +88,14 @@ class CrawlEngine {
     const queue = [{ url: startUrl, depth: 0 }]
     const pages = []
     const failed = []
+    let activeCount = 0
 
-    while (queue.length > 0 && pages.length < config.maxPages) {
-      const { url, depth } = queue.shift()
-      const normalized = normalizeUrl(url)
-      if (visited.has(normalized)) continue
-      visited.add(normalized)
-
-      // Scope check
-      if (!this._inScope(url, baseDomain, basePrefix, config.scope)) continue
-      // Skip pattern check
-      if (config.skipPatterns.some(p => p.test(url))) continue
-      // Include/exclude pattern check
-      if (!this._matchesFilters(url, config.includePatterns, config.excludePatterns)) continue
-
+    // Process queue with concurrency control
+    const processUrl = async (item) => {
+      const { url, depth } = item
       try {
         const page = await this._fetchPage(url, config, cookies)
-        if (!page) { failed.push({ url, error: 'empty' }); continue }
+        if (!page) { failed.push({ url, error: 'empty' }); return }
 
         const links = page.links || []
         pages.push({
@@ -93,20 +112,51 @@ class CrawlEngine {
             const absLink = resolveUrl(link, url)
             if (!absLink) continue
             const normLink = normalizeUrl(absLink)
-            if (!visited.has(normLink)) {
-              queue.push({ url: absLink, depth: depth + 1 })
-            }
+            if (visited.has(normLink)) continue
+            // Pre-filter before queueing
+            if (!this._inScope(absLink, baseDomain, basePrefix, config.scope)) continue
+            if (config.skipPatterns.some(p => p.test(absLink))) continue
+            if (!this._matchesFilters(absLink, config.includePatterns, config.excludePatterns)) continue
+            visited.add(normLink)
+            queue.push({ url: absLink, depth: depth + 1 })
           }
-        }
-
-        if (queue.length > 0 && config.delay > 0) {
-          await sleep(config.delay)
         }
       } catch (e) {
         failed.push({ url, error: e.message })
       }
     }
 
+    // Seed the first URL
+    visited.add(normalizeUrl(startUrl))
+
+    // BFS with parallel workers
+    while (queue.length > 0 || activeCount > 0) {
+      // Launch up to `concurrency` parallel fetches
+      const batch = []
+      while (queue.length > 0 && batch.length < concurrency && (pages.length + activeCount + batch.length) < config.maxPages) {
+        batch.push(queue.shift())
+      }
+
+      if (batch.length === 0 && activeCount === 0) break
+
+      if (batch.length > 0) {
+        activeCount += batch.length
+        const results = await Promise.allSettled(
+          batch.map(item => processUrl(item))
+        )
+        activeCount -= batch.length
+
+        // Small delay between batches to be polite
+        if (queue.length > 0 && config.delay > 0) {
+          await sleep(config.delay)
+        }
+      }
+
+      // Stop if we've hit maxPages
+      if (pages.length >= config.maxPages) break
+    }
+
+    const duration = Date.now() - startTime
     const result = {
       startUrl,
       pages,
@@ -114,12 +164,13 @@ class CrawlEngine {
         total: visited.size,
         crawled: pages.length,
         failed: failed.length,
-        duration: Date.now() - startTime
+        concurrency,
+        duration,
+        pagesPerSecond: pages.length > 0 ? +(pages.length / (duration / 1000)).toFixed(2) : 0
       },
       failed: failed.length > 0 ? failed : undefined
     }
 
-    // Merge mode: combine all pages into single content
     if (config.merge) {
       result.merged = pages.map(p => {
         return `<!-- Source: ${p.url} -->\n# ${p.title || p.url}\n\n${p.content}`
@@ -147,7 +198,6 @@ class CrawlEngine {
     }
     jobs.set(jobId, job)
 
-    // Run crawl in background
     this.crawl(startUrl, opts, cookies)
       .then(result => {
         job.status = 'completed'
@@ -156,6 +206,8 @@ class CrawlEngine {
         job.finished = result.stats.crawled
         job.total = result.stats.total
         job.duration = result.stats.duration
+        job.concurrency = result.stats.concurrency
+        job.pagesPerSecond = result.stats.pagesPerSecond
       })
       .catch(err => {
         job.status = 'errored'
@@ -179,8 +231,9 @@ class CrawlEngine {
       finished: job.finished,
       total: job.total,
       pageCount: job.pages.length,
+      concurrency: job.concurrency,
+      pagesPerSecond: job.pagesPerSecond,
       error: job.error,
-      // Only include pages if completed
       pages: job.status === 'completed' ? job.pages : undefined,
       failed: job.status === 'completed' ? (job.failed.length > 0 ? job.failed : undefined) : undefined,
       duration: job.duration
@@ -200,18 +253,35 @@ class CrawlEngine {
     }))
   }
 
+  /**
+   * Get system info for crawl capacity estimation.
+   */
+  static getCapacity() {
+    const totalMB = Math.floor(os.totalmem() / 1024 / 1024)
+    const freeMB = Math.floor(os.freemem() / 1024 / 1024)
+    const concurrency = detectConcurrency()
+    // Estimate: each page takes ~4s with stealth delays
+    const pagesPerMinute = concurrency * 15  // ~4s per page
+    return {
+      totalRamMB: totalMB,
+      freeRamMB: freeMB,
+      maxConcurrency: concurrency,
+      estimatedPagesPerMinute: pagesPerMinute,
+      estimate100pages: `~${Math.ceil(100 / pagesPerMinute)} min`,
+      estimate1000pages: `~${Math.ceil(1000 / pagesPerMinute)} min`
+    }
+  }
+
   async _fetchPage(url, config, cookies) {
-    // Use our own browse engine (Camoufox) — no external dependencies
     try {
       const result = await this.browseEngine.browse(url, {
         stealth: config.stealth,
         _cookies: cookies,
         timeout: config.timeout,
-        html: true,    // request raw HTML for link extraction
-        noCache: true  // always fetch fresh for crawling
+        html: true,
+        noCache: true
       })
       if (result?.content) {
-        // Extract links from HTML if available, otherwise from markdown content
         const linkSource = result.html || result.content
         return {
           title: result.title || '',
@@ -222,7 +292,6 @@ class CrawlEngine {
     } catch (e) {
       throw new Error(`Failed to fetch ${url}: ${e.message}`)
     }
-
     return null
   }
 
@@ -231,20 +300,18 @@ class CrawlEngine {
       const parsed = new URL(url)
       if (scope === 'domain') return parsed.hostname === baseDomain || parsed.hostname.endsWith('.' + baseDomain)
       if (scope === 'prefix') return url.startsWith(basePrefix)
-      return true // 'any'
+      return true
     } catch {
       return false
     }
   }
 
   _matchesFilters(url, includePatterns, excludePatterns) {
-    // Exclude takes priority
     if (excludePatterns && excludePatterns.length > 0) {
       for (const pattern of excludePatterns) {
         if (wildcardMatch(url, pattern)) return false
       }
     }
-    // If include patterns specified, URL must match at least one
     if (includePatterns && includePatterns.length > 0) {
       return includePatterns.some(pattern => wildcardMatch(url, pattern))
     }
@@ -252,12 +319,9 @@ class CrawlEngine {
   }
 }
 
-/**
- * Wildcard matching: * matches anything except /, ** matches everything including /
- */
 function wildcardMatch(str, pattern) {
   const regex = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex chars
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*\*/g, '{{GLOBSTAR}}')
     .replace(/\*/g, '[^/]*')
     .replace(/\{\{GLOBSTAR\}\}/g, '.*')
@@ -266,13 +330,11 @@ function wildcardMatch(str, pattern) {
 
 function extractLinks(content, baseUrl) {
   const links = []
-  // Extract from href attributes (HTML)
   const hrefMatches = content.matchAll(/href=["']([^"']+)["']/gi)
   for (const m of hrefMatches) {
     const resolved = resolveUrl(m[1], baseUrl)
     if (resolved && !links.includes(resolved)) links.push(resolved)
   }
-  // Extract from markdown links
   const mdMatches = content.matchAll(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g)
   for (const m of mdMatches) {
     if (!links.includes(m[2])) links.push(m[2])
@@ -293,7 +355,6 @@ function normalizeUrl(url) {
   try {
     const u = new URL(url)
     u.hash = ''
-    // Remove trailing slash for consistency
     let href = u.href
     if (href.endsWith('/') && u.pathname !== '/') {
       href = href.slice(0, -1)
