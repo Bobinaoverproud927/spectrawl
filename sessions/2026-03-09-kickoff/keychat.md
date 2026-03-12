@@ -108,3 +108,13 @@
 - HN blocked (toonew) — karma builder cron set, post retry cron set
 - Adapter count: 19 individual + 1 generic = 20, covering 24+ platforms
 - Missing: Peerlist, Stacker News, ~8 generic directory selectors
+
+## Session 12 — Awesome Lists + Glama (Mar 10, ~08:50-09:55 UTC)
+- Submitted 4 awesome list PRs (82K+7.8K+26K+65K = 180K+ combined stars)
+- awesome-selfhosted (279K) locked to collaborators — can't submit
+- awesome-mcp-servers requires Glama listing — Fay submitted for review
+- Added Dockerfile, .dockerignore, GitHub Release v0.3.20
+- Added 10 GitHub topics including mcp-server, model-context-protocol
+- Glama has no API — browser-only GitHub OAuth submission
+- Published spectrawl@0.3.20
+- Pending: Glama approval → update MCP PR with Glama URL

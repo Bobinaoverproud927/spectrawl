@@ -3,19 +3,59 @@
 ## What
 Self-hosted Node.js package — unified web layer for AI agents. One API for search, browse, auth, and platform actions. 5,000 free searches/month via Gemini Grounded Search. Open source, MIT, npm installable.
 
-## Status: v0.3.19 — Launched, promoted across 6+ platforms
-README toned down per Xan's feedback. Launched on Reddit (4 subs), Dev.to, OpenClaw Discussions + Discord. HN karma building (post in ~4 days). X draft ready. 7 adapters live tested. 19 individual + 1 generic directory adapter.
+## Status: v0.3.20 — Launched, promoted across 10+ platforms
+Launched on Reddit (4 subs), Dev.to, Hashnode, OpenClaw Discussions + Discord. HN karma building (post in ~4 days). X/LinkedIn/Medium manually posted by Fay. 4 awesome list PRs submitted (180K+ combined stars). Glama submitted for review. 7 adapters live tested. 19 individual + 1 generic directory adapter.
 
 ## Repo
 **github.com/FayAndXan/spectrawl** (public, 30+ commits)
+- GitHub Release: v0.3.20
+- Dockerfile: node:22-slim, port 3900
+- Topics: mcp, mcp-server, model-context-protocol, ai-agents, web-scraping, search-engine, browser-automation, self-hosted, nodejs, stealth-browser
 
 ## Published
-- npm: `spectrawl@0.3.19` (account: fay_)
+- npm: `spectrawl@0.3.20` (account: fay_)
 
 ## Infrastructure
 - **Spectrawl systemd service**: `spectrawl.service`, localhost:3900, auto-restart
 - **GITHUB_TOKEN in gateway env**: all agents can use it
 - **Credential architecture**: HTTP service holds credentials. Other agents call `localhost:3900/act`.
+
+## Launch Status
+
+### Live ✅
+| Platform | URL/PR |
+|----------|--------|
+| Reddit r/selfhosted | https://www.reddit.com/r/selfhosted/comments/1rpqekt/ |
+| Reddit r/opensource | https://www.reddit.com/r/opensource/comments/1rpqets/ |
+| Reddit r/node | https://www.reddit.com/r/node/comments/1rpqf5p/ |
+| Reddit r/artificial | https://www.reddit.com/r/artificial/comments/1rpqfeg/ |
+| Dev.to | https://dev.to/fay_/i-built-a-self-hosted-web-layer-for-ai-agents-2gah |
+| Hashnode | https://feydefi.hashnode.dev/i-built-a-self-hosted-web-layer-for-ai-agents |
+| OpenClaw Discussions | https://github.com/openclaw/openclaw/discussions/41916 |
+| OpenClaw Discord | posted by Fay |
+| LinkedIn | posted by Fay |
+| Medium | posted by Fay (imported from Dev.to) |
+| X (@fayandxan) | posted by Fay |
+| npm | spectrawl@0.3.20 |
+
+### Awesome List PRs (pending merge)
+| List | Stars | PR |
+|------|-------|----|
+| awesome-mcp-servers | 82K ⭐ | #3017 (needs Glama URL) |
+| awesome-web-scraping | 7.8K ⭐ | #201 |
+| awesome-ai-agents | 26K ⭐ | #426 |
+| awesome-nodejs | 65K ⭐ | #1397 |
+| awesome-selfhosted | 279K ⭐ | ❌ locked to collaborators |
+
+### Pending
+- HN karma building (cron: 3 comments/day, Mar 10-13) → auto-post attempt daily
+- Glama listing → once approved, update awesome-mcp-servers PR
+
+### Not Yet Submitted
+- BetaList, DevHunt, SaaSHub, AlternativeTo (form-based directories)
+- Stacker News, Peerlist (need adapters)
+- Product Hunt (needs Fay's PH account)
+- Lobsters (invite-only)
 
 ## Pricing (honest)
 | Volume | Spectrawl | Tavily |
@@ -24,90 +64,39 @@ README toned down per Xan's feedback. Launched on Reddit (4 subs), Dev.to, OpenC
 | 10K/month | $80 | $90 |
 | 50K/month | $720 | **$490** |
 
-- Grounding: $0 under 5K/mo, $14/1K after
-- Summarizer (opt-in): ~$0.002/query extra
-- Crossover: ~8K queries/month
-
 ## Key Design Decisions
-- **Summarizer OFF by default** — agents have their own LLM. Double-summarizing = double cost. `{ summarize: true }` opt-in.
-- **One-time key warning** — when no GEMINI_API_KEY, prints helpful message with link
-- **No truly free search at scale** — every API costs something. Gemini free tier is the best deal.
-- **Tavily as fallback engine** — built and integrated, in default cascade
-- **Speed optimized** — 16s → ~10s full, ~6s snippets mode
-- **5s scrape timeout** — quality over speed (Fay's call)
+- **Summarizer OFF by default** — agents have their own LLM
+- **Tavily as fallback engine** — in default cascade
+- **Speed**: ~10s full, ~6s snippets. Floor is Gemini API latency.
+- **5s scrape timeout** — quality over speed
 - **For agents, not scripts** — rich sources > pre-chewed answers
+- **No aggressive Tavily comparison** — "Different tools for different needs"
 
 ## What's Built & Validated
-
-### Search ✅
-- Gemini Grounded (primary), Brave, DDG, Bing, Serper, Google CSE, Jina, SearXNG
-- Deep search: parallel Gemini+DDG → dedup → source ranking → scraping → sources returned
-- Source quality ranker: boost GitHub/SO/HN, penalize SEO farms
-
-### Answer Quality (verified)
-- Spectrawl: 10 sources, full page content scraped, inline [1][2][3] citations (with summarizer)
-- Tavily: 10 sources, snippets only, no citations
-- Speed: ~10s full / ~6s snippets vs Tavily's 2s
-- Modes: `full` (~10s), `snippets` (~6s), `fast` (~5s)
-
-### HTTP Server ✅
-- All 5 endpoints tested: /health, /status, /search, /browse, /act
-
-### MCP Server ✅
-- Initialize + tool listing (5 tools) + web_search — all working
-
-### Auth Manager ✅
-- SQLite cookie store, expiry detection, cookie refresher events
-
-### Platform Adapters — 7 live tested
-| Platform | Status | Account |
-|----------|--------|---------|
-| GitHub | ✅ LIVE | FeyDeFi |
-| Reddit | ✅ LIVE | EntrepreneurSharp538 |
-| Dev.to | ✅ LIVE | fay_ |
-| HuggingFace | ✅ LIVE | fayface |
-| X | ✅ reads, ❌ writes (datacenter blocked) | @fayandxan |
-| IH | stored cookies | akmanfuoco33 |
-| 18 others | code exists, untested | need accounts |
-
-### Rate Limiter + Dedup ✅
-### Stealth Browse ✅
-- Tier 1: Playwright + stealth plugin (default, npm install)
-- Tier 2: Camoufox binary (installed, verified, spoofs Mac UA on Linux)
-- Tier 3: Remote Camoufox service (config only)
-- CAPTCHA: stealth bypass → Gemini Vision (image) → unsolvable (token-based)
-
-### Auth Manager ✅ (E2E tested)
-- Full cycle: add → getCookies → browse with cookies → update → remove
-- Form filler: smartFill tested on real httpbin form
-
-## Accounts Fay Still Needs
-- **Quick wins**: Discord bot
-- **Browser cookies**: LinkedIn, HN, Quora, AlternativeTo, SaaSHub, DevHunt
-- **OAuth**: Medium, Product Hunt, YouTube
-
-## API Key Status
-- Gemini (`AIzaSyDwZ5...`): ✅
-- MiniMax: ❌ expired
-- xAI: ❌ credits exhausted
-- Dev.to: ✅
-- HuggingFace: ✅
+- Search: 8 engines, deep search, source ranking, scraping
+- HTTP Server: 5 endpoints tested
+- MCP Server: stdio transport, 5 tools
+- Auth: SQLite cookies, expiry detection, refresher
+- Browse: 3-tier stealth (Playwright → Camoufox → Remote)
+- CAPTCHA: stealth bypass → Gemini Vision → unsolvable
+- Adapters: 24 total, 7 live tested
+- Rate limiter + dedup
+- Form filler
 
 ## Next Steps
-1. README update — browse tiers, CAPTCHA docs, speed benchmarks, modes
-2. Test remaining 17 untested adapters (need accounts from Fay)
-3. Wire proxy rotation (need ProxyCheap or similar)
-4. Battle-test CAPTCHA solver on real protected sites
-5. Streaming answers for perceived speed improvement
-6. Browser-automation adapter selector validation
+1. Wait for Glama approval → update awesome-mcp-servers PR
+2. Monitor awesome list PR reviews
+3. Monitor HN karma cron → auto-post when ready
+4. Submit to launch directories (BetaList, DevHunt, SaaSHub, AlternativeTo)
+5. Build Peerlist + Stacker News adapters
+6. Test remaining untested adapters (need accounts)
+7. Battle-test CAPTCHA solver on real protected sites
 
 ## Key Files
-- `src/search/index.js` — search engine, deepSearch (summarizer opt-in)
+- `src/search/index.js` — search engine, deepSearch
 - `src/search/engines/gemini-grounded.js` — primary search
-- `src/search/summarizer.js` — multi-provider, opt-in only
-- `src/search/source-ranker.js` — domain trust scoring
-- `src/search/scraper.js` — Jina + readability + Playwright fallback
 - `src/server.js` — HTTP server (port 3900)
 - `src/mcp.js` — MCP server (stdio)
 - `src/act/adapters/*.js` — 24 platform adapters
 - `src/auth/index.js` — SQLite auth manager
+- `Dockerfile` — node:22-slim, HTTP server default

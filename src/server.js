@@ -54,10 +54,33 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && path === '/crawl') {
       const body = await readBody(req)
-      const { url: targetUrl, depth, maxPages, format, delay, stealth, scope, auth } = body
+      const { url: targetUrl, depth, maxPages, format, delay, stealth, scope, auth,
+              includePatterns, excludePatterns, merge, async: asyncMode } = body
       if (!targetUrl) return error(res, 400, 'url is required')
-      const result = await spectrawl.crawl(targetUrl, { depth, maxPages, format, delay, stealth, scope, auth })
+      
+      const opts = { depth, maxPages, format, delay, stealth, scope, auth, includePatterns, excludePatterns, merge }
+      
+      if (asyncMode) {
+        // Async mode: return job ID immediately
+        const job = spectrawl.startCrawlJob(targetUrl, opts)
+        return json(res, job)
+      }
+      
+      const result = await spectrawl.crawl(targetUrl, opts)
       return json(res, result)
+    }
+
+    if (req.method === 'GET' && path.startsWith('/crawl/')) {
+      const jobId = path.split('/crawl/')[1]
+      if (!jobId) return error(res, 400, 'job ID is required')
+      const job = spectrawl.getCrawlJob(jobId)
+      if (!job) return error(res, 404, 'job not found')
+      return json(res, job)
+    }
+
+    if (req.method === 'GET' && path === '/crawl/jobs') {
+      const jobList = spectrawl.listCrawlJobs()
+      return json(res, { jobs: jobList })
     }
 
     if (req.method === 'POST' && path === '/act') {

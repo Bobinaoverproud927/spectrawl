@@ -93,6 +93,27 @@ class Spectrawl {
   }
 
   /**
+   * Start an async crawl job. Returns job ID immediately.
+   */
+  startCrawlJob(url, opts = {}) {
+    return this.crawlEngine.startJob(url, opts)
+  }
+
+  /**
+   * Get crawl job status/results.
+   */
+  getCrawlJob(jobId) {
+    return this.crawlEngine.getJob(jobId)
+  }
+
+  /**
+   * List all crawl jobs.
+   */
+  listCrawlJobs() {
+    return this.crawlEngine.listJobs()
+  }
+
+  /**
    * Perform an authenticated action on a platform.
    * @param {string} platform - Platform name (x, reddit, devto, etc.)
    * @param {string} action - Action name (post, comment, like, etc.)
