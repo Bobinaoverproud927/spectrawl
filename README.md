@@ -1,12 +1,12 @@
 # Spectrawl
 
-The unified web layer for AI agents. Search, browse, authenticate, and act on platforms — one package, self-hosted.
+The unified web layer for AI agents. Search, browse, crawl, authenticate, and act on platforms — one package, self-hosted.
 
-**5,000 free searches/month** via Gemini Grounded Search. Full page scraping, stealth browsing, 24 platform adapters.
+**5,000 free searches/month** via Gemini Grounded Search. Full page scraping, stealth browsing, multi-page crawling, 24 platform adapters.
 
 ## What It Does
 
-AI agents need to interact with the web — searching, browsing pages, logging into platforms, posting content. Today you wire together Playwright + a search API + cookie managers + platform-specific scripts. Spectrawl is one package that does all of it.
+AI agents need to interact with the web — searching, browsing pages, crawling sites, logging into platforms, posting content. Today you wire together Playwright + a search API + cookie managers + platform-specific scripts. Spectrawl is one package that does all of it.
 
 ```
 npm install spectrawl
@@ -38,30 +38,48 @@ console.log(withAnswer.answer)  // AI-generated answer with [1] [2] citations
 // Fast mode — snippets only, skip scraping
 const fast = await web.deepSearch('query', { mode: 'fast' })
 
-// Basic search — raw results, no scraping
+// Basic search — raw results
 const basic = await web.search('query')
 ```
 
 > **Why no summary by default?** Your agent already has an LLM. If we summarize AND your agent summarizes, you're paying two LLMs for one answer. We return rich sources — your agent does the rest.
 
-## Spectrawl vs Tavily
+## Spectrawl vs Others
 
-Different tools for different needs.
-
-| | Tavily | Spectrawl |
-|---|---|---|
-| Speed | ~2s | ~6-10s |
-| Free tier | 1,000/month | 5,000/month |
-| Returns | Snippets + AI answer | Full page content + snippets |
-| Self-hosted | No | Yes |
-| Stealth browsing | No | Yes (Camoufox + Playwright) |
-| Platform posting | No | 24 adapters |
-| Auth management | No | Cookie store + auto-refresh |
-| Cached repeats | No | <1ms |
-
-**Tavily** is fast and simple — great for agents that need quick answers. **Spectrawl** returns richer data and does more (browse, auth, post) — but it's slower. Choose based on your use case.
+| | Tavily | Crawl4AI | Firecrawl | Spectrawl |
+|---|---|---|---|---|
+| Speed | ~2s | ~5s | ~3s | ~6-10s |
+| Free tier | 1,000/mo | Unlimited | 500/mo | 5,000/mo |
+| Returns | Snippets + AI | Markdown | Markdown/JSON | Full page + snippets |
+| Self-hosted | No | Yes | Yes | Yes |
+| Anti-detect | No | No | No | **Yes (Camoufox)** |
+| Block detection | No | No | No | **8 services** |
+| CAPTCHA solving | No | No | No | **Yes (Gemini Vision)** |
+| Multi-page crawl | No | Yes | Yes | **Yes** |
+| Platform posting | No | No | No | **24 adapters** |
+| Auth management | No | No | No | **Cookie store + refresh** |
 
 ## Search
+
+Two modes: **basic search** and **deep search**.
+
+### Basic Search
+
+```js
+const results = await web.search('query')
+```
+
+Returns raw search results from the engine cascade. Fast, lightweight.
+
+### Deep Search
+
+```js
+const results = await web.deepSearch('query', { summarize: true })
+```
+
+Full pipeline: query expansion → parallel search → merge/dedup → rerank → scrape top N → optional AI summary with citations.
+
+### Search Engine Cascade
 
 Default cascade: **Gemini Grounded → Tavily → Brave**
 
@@ -89,50 +107,6 @@ Query → Gemini Grounded + DDG (parallel)
   → Returns sources to your agent (AI summary opt-in with summarize: true)
 ```
 
-### Search vs Deep Search
-
-| Method | JS API | HTTP API | What it does |
-|--------|--------|----------|--------------|
-| **Search** | `web.search(query)` | `POST /search` | Cascade through engines, return snippets + URLs |
-| **Deep Search** | `web.deepSearch(query)` | `POST /search { mode: "deep" }` | Search + scrape top results for full content |
-
-**Search response:**
-
-```json
-{
-  "results": [
-    {
-      "title": "How to build an MCP server",
-      "url": "https://example.com/mcp-guide",
-      "snippet": "A step-by-step guide...",
-      "source": "gemini-grounded",
-      "confidence": 0.95
-    }
-  ],
-  "cached": false
-}
-```
-
-**Deep Search response:**
-
-```json
-{
-  "sources": [
-    {
-      "title": "How to build an MCP server",
-      "url": "https://example.com/mcp-guide",
-      "snippet": "A step-by-step guide...",
-      "fullContent": "# How to Build an MCP Server\n\nThe Model Context Protocol...",
-      "confidence": 0.95
-    }
-  ],
-  "answer": "To build an MCP server... [1] [2]",
-  "cached": false
-}
-```
-
-> `answer` is `null` unless `summarize: true` is passed.
-
 ### What you get without any keys
 
 DDG-only search, raw results, no AI answer. Works from home IPs. Datacenter IPs get rate-limited by DDG — recommend at minimum a free Gemini key.
@@ -145,109 +119,167 @@ Stealth browsing with anti-detection. Three tiers (auto-escalation):
 2. **Camoufox binary** — engine-level anti-fingerprint (`npx spectrawl install-stealth`)
 3. **Remote Camoufox** — for existing deployments
 
-**Auto-escalation:** If Playwright gets blocked (CAPTCHA, Cloudflare, 403), Spectrawl automatically retries with Camoufox if installed. No config needed.
-
-```js
-const page = await web.browse('https://example.com')
-console.log(page.content)       // extracted text/markdown
-console.log(page.title)         // page title
-console.log(page.url)           // final URL (after redirects)
-```
+If tier 1 gets blocked, Spectrawl automatically escalates to tier 2 (if installed) or tier 3 (if configured). No manual intervention needed.
 
 ### Browse Options
 
 ```js
 const page = await web.browse('https://example.com', {
-  screenshot: true,    // capture PNG screenshot
-  fullPage: true,      // full page screenshot (not just viewport)
-  html: true,          // return raw HTML in addition to markdown
-  auth: 'reddit',      // use stored auth cookies for this platform
-  stealth: true,       // force stealth browser mode
-  camoufox: true,      // force Camoufox engine (skip Playwright)
-  noCache: true        // bypass cache, always fetch fresh
+  screenshot: true,    // Take a PNG screenshot
+  fullPage: true,      // Full page screenshot (not just viewport)
+  html: true,          // Return raw HTML alongside markdown
+  stealth: true,       // Force stealth mode
+  camoufox: true,      // Force Camoufox engine
+  noCache: true,       // Bypass cache
+  auth: 'reddit'       // Use stored auth cookies for this platform
 })
 ```
 
 ### Browse Response
 
-```json
+```js
 {
-  "content": "# Example Domain\n\nThis domain is for use in documentation...",
-  "url": "https://example.com/",
-  "title": "Example Domain",
-  "statusCode": 200,
-  "engine": "camoufox",
-  "cached": false,
-  "screenshot": "iVBORw0KGgo... (base64 PNG, only if requested)",
-  "html": "<html>... (only if html: true)"
+  content: "# Page Title\n\nExtracted markdown content...",
+  url: "https://example.com",
+  title: "Page Title",
+  statusCode: 200,
+  cached: false,
+  engine: "camoufox",            // which engine was used
+  screenshot: Buffer<png>,        // PNG buffer (JS) or base64 (HTTP)
+  html: "<html>...</html>",       // raw HTML (if html: true)
+  blocked: false,                 // true if block page detected
+  blockInfo: null                 // { type: 'cloudflare', detail: '...' }
 }
 ```
 
-Auto-fallback: if Jina and readability return too little content (<200 chars), Spectrawl renders the page with Playwright and extracts from the rendered DOM. Tavily can't do this — they fail on JS-heavy pages.
+### Block Page Detection
+
+Spectrawl detects block/challenge pages from **8 anti-bot services** and reports them in the response instead of returning garbage HTML:
+
+- **Cloudflare** (including RFC 9457 structured errors)
+- **Akamai**
+- **AWS WAF**
+- **Imperva / Incapsula**
+- **DataDome**
+- **PerimeterX / HUMAN**
+- **hCaptcha** challenges
+- **reCAPTCHA** challenges
+- Generic bot detection (403, "access denied", etc.)
+
+When a block is detected, the response includes `blocked: true` and `blockInfo: { type, detail }`.
+
+### CAPTCHA Solving
+
+Built-in CAPTCHA solver using **Gemini Vision** (free tier: 1,500 req/day):
+
+- ✅ Image CAPTCHAs
+- ✅ Text/math CAPTCHAs
+- ✅ Simple visual challenges
+- ❌ reCAPTCHA v2/v3 (requires token solving services)
+- ❌ hCaptcha (requires token solving services)
+- ❌ Cloudflare Turnstile (requires token solving services)
+
+The solver automatically detects CAPTCHA type and attempts resolution before returning the page.
 
 ## Screenshots
 
-Take screenshots of any page with anti-detection:
+Take screenshots of any page via browse:
 
-**HTTP:**
+### JavaScript
+
+```js
+const result = await web.browse('https://example.com', {
+  screenshot: true,
+  fullPage: true       // optional: capture entire page, not just viewport
+})
+// result.screenshot is a PNG Buffer
+fs.writeFileSync('screenshot.png', result.screenshot)
+```
+
+### HTTP API
+
 ```bash
 curl -X POST http://localhost:3900/browse \
   -H 'Content-Type: application/json' \
-  -d '{"url": "https://example.com", "screenshot": true}'
+  -d '{"url": "https://example.com", "screenshot": true, "fullPage": true}'
 ```
 
-Response includes `screenshot` as a **base64-encoded PNG string**.
-
-**JS:**
-```js
-const page = await web.browse('https://example.com', { screenshot: true })
-// page.screenshot is a Buffer (Node.js) — write to file or encode
-fs.writeFileSync('screenshot.png', page.screenshot)
+Response:
+```json
+{
+  "content": "# Page Title\n\nExtracted markdown...",
+  "url": "https://example.com",
+  "title": "Page Title",
+  "screenshot": "iVBORw0KGgo...base64-encoded-png...",
+  "cached": false
+}
 ```
 
-**Full page screenshot:**
+> **Note:** Screenshots bypass the cache — each request renders a fresh page.
+
+## Crawl
+
+Multi-page website crawler with automatic RAM-based parallelization.
+
 ```js
-const page = await web.browse('https://example.com', {
-  screenshot: true,
-  fullPage: true  // captures entire scrollable page, not just viewport
+const result = await web.crawl('https://docs.example.com', {
+  depth: 2,              // how many link levels to follow
+  maxPages: 50,          // stop after N pages
+  format: 'markdown',    // 'markdown' or 'html'
+  scope: 'domain',       // 'domain' | 'subdomain' | 'path'
+  concurrency: 'auto',   // auto-detect from available RAM, or set a number
+  merge: true,           // merge all pages into one document
+  includePatterns: [],   // regex patterns to include
+  excludePatterns: [],   // regex patterns to skip
+  delay: 300,            // ms between batch launches (politeness)
+  stealth: true          // use anti-detect browsing
 })
 ```
 
-> Screenshots bypass the cache — a fresh page load is always performed.
+### Crawl Response
 
-## Anti-Bot Detection
-
-Spectrawl handles bot detection automatically:
-
+```js
+{
+  pages: [
+    { url: 'https://docs.example.com/', content: '...', title: '...', statusCode: 200 },
+    { url: 'https://docs.example.com/guide', content: '...', title: '...', statusCode: 200 },
+    // ...
+  ],
+  stats: {
+    pagesScraped: 23,
+    duration: 45000,
+    concurrency: 4
+  }
+}
 ```
-Request → Playwright + stealth plugin
-  → Blocked? → Retry with Camoufox (if installed)
-  → Still blocked? → Error with actionable hint
-```
 
-**Detection triggers:** CAPTCHA, Cloudflare challenges, 403 Forbidden, "Access Denied", bot detection pages.
+### Async Crawl Jobs
 
-**Stealth features:**
-- Randomized viewport sizes (1920×1080, 1536×864, 1440×900, 1366×768)
-- Human-like delays (500-2000ms between actions)
-- Scroll behavior simulation
-- Camoufox engine-level anti-fingerprinting (when installed)
-- Proxy support for residential IPs
+For large sites, use async mode to avoid HTTP timeouts:
 
-**Install Camoufox for maximum stealth:**
 ```bash
-npx spectrawl install-stealth
+# Start a crawl job (returns immediately)
+curl -X POST http://localhost:3900/crawl \
+  -d '{"url": "https://docs.example.com", "depth": 3, "maxPages": 100, "async": true}'
+# Response: { "jobId": "abc123", "status": "running" }
+
+# Check job status
+curl http://localhost:3900/crawl/abc123
+
+# List all jobs
+curl http://localhost:3900/crawl/jobs
+
+# Check system capacity
+curl http://localhost:3900/crawl/capacity
 ```
 
-## CAPTCHA Solving
+### RAM-Based Auto-Parallelization
 
-Built-in CAPTCHA solver using Gemini Vision (free tier: 1,500 req/day):
+Spectrawl estimates ~250MB per browser tab and calculates safe concurrency from available system RAM:
 
-- Detects image CAPTCHAs, text CAPTCHAs, and simple challenges automatically
-- Uses `gemini-2.0-flash` by default
-- Does **not** handle reCAPTCHA v2/v3, hCaptcha, or Cloudflare Turnstile (those require token solving services)
-
-The solver is used automatically when a CAPTCHA is detected during browsing. No configuration needed if `GEMINI_API_KEY` is set.
+- **8GB server:** ~4 concurrent tabs
+- **16GB server:** ~8 concurrent tabs
+- **32GB server:** 10 concurrent tabs (capped)
 
 ## Auth
 
@@ -262,32 +294,41 @@ const accounts = await web.auth.getStatus()
 // [{ platform: 'x', account: '@myhandle', status: 'valid', expiresAt: '...' }]
 ```
 
-Cookie refresh cron fires `cookie_expiring` and `cookie_expired` events before accounts go stale.
+Cookie refresh cron fires events before accounts go stale (see [Events](#events)).
 
-## Proxy Support
+## Events
 
-Configure a proxy for all browse requests:
+Spectrawl emits events for auth state changes, rate limits, and action results. Subscribe to stay informed:
 
-**spectrawl.json:**
-```json
-{
-  "browse": {
-    "proxy": {
-      "host": "proxy.example.com",
-      "port": 8080,
-      "username": "user",
-      "password": "pass"
-    }
-  }
-}
+```js
+const { EVENTS } = require('spectrawl')
+
+web.on(EVENTS.COOKIE_EXPIRING, (data) => {
+  console.log(`Cookie expiring for ${data.platform}:${data.account}`)
+})
+
+web.on(EVENTS.RATE_LIMITED, (data) => {
+  console.log(`Rate limited on ${data.platform}`)
+})
+
+// Wildcard — catch everything
+web.on('*', ({ event, ...data }) => {
+  console.log(`Event: ${event}`, data)
+})
 ```
 
-**Rotating proxy server** (built-in):
-```bash
-npx spectrawl proxy --port 8080
-```
+### Available Events
 
-The proxy is applied to all Playwright and Camoufox browser contexts automatically.
+| Event | When |
+|---|---|
+| `cookie_expiring` | Cookie approaching expiry |
+| `cookie_expired` | Cookie has expired |
+| `auth_failed` | Authentication attempt failed |
+| `auth_refreshed` | Cookie successfully refreshed |
+| `rate_limited` | Platform rate limit hit |
+| `action_failed` | Platform action failed |
+| `action_success` | Platform action succeeded |
+| `health_check` | Periodic health check result |
 
 ## Act — 24 Platform Adapters
 
@@ -325,7 +366,7 @@ Built-in rate limiting, content dedup (MD5, 24h window), and dead letter queue f
 
 ## Source Quality Ranking
 
-Spectrawl ranks results by domain trust — something Tavily doesn't do:
+Spectrawl ranks results by domain trust — something most search tools don't do:
 
 - **Boosted:** GitHub, StackOverflow, HN, Reddit, MDN, arxiv, Wikipedia
 - **Penalized:** SEO farms, thin content sites, tag/category pages
@@ -340,44 +381,6 @@ const web = new Spectrawl({
 })
 ```
 
-## Events
-
-Spectrawl emits events for auth state changes and rate limiting. Useful for agents that need to react to credential issues:
-
-```js
-const web = new Spectrawl()
-
-web.on('cookie_expiring', (data) => {
-  console.log(`⚠️ ${data.platform} cookies expiring soon`)
-})
-
-web.on('cookie_expired', (data) => {
-  console.log(`❌ ${data.platform} cookies expired — re-auth needed`)
-})
-
-web.on('rate_limited', (data) => {
-  console.log(`🚫 Rate limited on ${data.platform}`)
-})
-
-// Wildcard handler — catch all events
-web.on('*', ({ event, ...data }) => {
-  console.log(`Event: ${event}`, data)
-})
-```
-
-**Available events:**
-
-| Event | When |
-|-------|------|
-| `cookie_expiring` | Stored cookies approaching expiry |
-| `cookie_expired` | Cookies have expired |
-| `auth_failed` | Authentication attempt failed |
-| `auth_refreshed` | Cookies successfully refreshed |
-| `rate_limited` | Platform rate limit hit |
-| `action_failed` | Platform action (post, comment) failed |
-| `action_success` | Platform action succeeded |
-| `health_check` | Periodic auth health check completed |
-
 ## HTTP Server
 
 ```bash
@@ -386,141 +389,140 @@ npx spectrawl serve --port 3900
 
 ### Endpoints
 
-#### `POST /search`
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/search` | Search the web |
+| `POST` | `/browse` | Stealth browse a URL |
+| `POST` | `/crawl` | Crawl a website (sync or async) |
+| `POST` | `/act` | Platform actions |
+| `GET` | `/status` | Auth account health |
+| `GET` | `/health` | Server health |
+| `GET` | `/crawl/jobs` | List async crawl jobs |
+| `GET` | `/crawl/:jobId` | Get crawl job status/results |
+| `GET` | `/crawl/capacity` | System crawl capacity |
 
-Search the web.
+### Request / Response Examples
 
-```json
-{
-  "query": "best headless browsers 2026",
-  "summarize": true,
-  "scrapeTop": 5,
-  "minResults": 5
-}
+#### POST /search
+
+```bash
+curl -X POST http://localhost:3900/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "best headless browsers 2026", "summarize": true}'
 ```
 
-**Response:**
+Response:
 ```json
 {
   "sources": [
     {
-      "title": "Best Headless Browsers",
+      "title": "Top Headless Browsers in 2026",
       "url": "https://example.com/article",
-      "snippet": "A comparison of...",
-      "fullContent": "# Best Headless Browsers\n\n...",
+      "snippet": "Short snippet from search...",
+      "content": "Full page markdown content (if scraped)...",
       "source": "gemini-grounded",
-      "confidence": 0.96
+      "confidence": 0.95
     }
   ],
-  "answer": "The best headless browsers in 2026 are... [1]",
+  "answer": "AI-generated summary with [1] citations... (only if summarize: true)",
   "cached": false
 }
 ```
 
-#### `POST /browse`
+#### POST /browse
 
-Browse a URL with stealth anti-detection.
-
-```json
-{
-  "url": "https://example.com",
-  "screenshot": true,
-  "fullPage": false,
-  "html": false,
-  "auth": "reddit",
-  "stealth": true
-}
+```bash
+curl -X POST http://localhost:3900/browse \
+  -H 'Content-Type: application/json' \
+  -d '{"url": "https://example.com", "screenshot": true, "fullPage": true}'
 ```
 
-**Response:**
+Response:
 ```json
 {
-  "content": "# Example Domain\n\nThis domain is for use in...",
-  "url": "https://example.com/",
+  "content": "# Example Domain\n\nThis domain is for use in illustrative examples...",
+  "url": "https://example.com",
   "title": "Example Domain",
   "statusCode": 200,
-  "engine": "camoufox",
+  "screenshot": "iVBORw0KGgoAAAANSUhEUg...base64...",
   "cached": false,
-  "screenshot": "iVBORw0KGgoAAAANSUhEUg... (base64 PNG)"
+  "engine": "playwright"
 }
 ```
 
-#### `POST /act`
+#### POST /crawl
 
-Perform an authenticated platform action.
-
-```json
-{
-  "platform": "github",
-  "action": "create-issue",
-  "repo": "user/repo",
-  "title": "Bug report",
-  "body": "Steps to reproduce..."
-}
+```bash
+curl -X POST http://localhost:3900/crawl \
+  -H 'Content-Type: application/json' \
+  -d '{"url": "https://docs.example.com", "depth": 2, "maxPages": 10}'
 ```
 
-**Response:**
+Response:
 ```json
 {
-  "success": true,
-  "url": "https://github.com/user/repo/issues/42",
-  "id": "42"
-}
-```
-
-#### `GET /status`
-
-Check auth account health.
-
-**Response:**
-```json
-{
-  "accounts": [
+  "pages": [
     {
-      "platform": "x",
-      "account": "@myhandle",
-      "status": "valid",
-      "expiresAt": "2026-04-01T00:00:00Z"
+      "url": "https://docs.example.com/",
+      "content": "# Docs Home\n\n...",
+      "title": "Documentation",
+      "statusCode": 200
     }
-  ]
+  ],
+  "stats": {
+    "pagesScraped": 8,
+    "duration": 12000,
+    "concurrency": 4
+  }
 }
 ```
 
-#### `GET /health`
+#### POST /act
 
-Server health check.
+```bash
+curl -X POST http://localhost:3900/act \
+  -H 'Content-Type: application/json' \
+  -d '{"platform": "github", "action": "create-issue", "repo": "user/repo", "title": "Bug", "body": "Details..."}'
+```
 
-**Response:**
+#### Error Responses
+
+All errors follow [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details format:
+
 ```json
 {
-  "status": "ok",
-  "version": "0.5.0"
+  "type": "https://spectrawl.dev/errors/rate-limited",
+  "status": 429,
+  "title": "rate limited",
+  "detail": "Reddit rate limit: max 3 posts per hour",
+  "retryable": true
 }
 ```
 
-### Error Responses
+Error types: `bad-request` (400), `unauthorized` (401), `forbidden` (403), `not-found` (404), `rate-limited` (429), `internal-error` (500), `upstream-error` (502), `service-unavailable` (503).
 
-All errors follow [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) (Problem Details for HTTP APIs):
+## Proxy Configuration
+
+Route browsing through residential or datacenter proxies:
 
 ```json
 {
-  "type": "https://spectrawl.dev/errors/bad-request",
-  "status": 400,
-  "title": "bad request",
-  "detail": "query is required"
+  "browse": {
+    "proxy": {
+      "host": "proxy.example.com",
+      "port": 8080,
+      "username": "user",
+      "password": "pass"
+    }
+  }
 }
 ```
 
-| Status | Type | When |
-|--------|------|------|
-| 400 | `bad-request` | Missing required parameters |
-| 401 | `unauthorized` | Invalid or missing auth |
-| 403 | `forbidden` | Access denied |
-| 404 | `not-found` | Unknown endpoint |
-| 429 | `rate-limited` | Platform rate limit exceeded |
-| 500 | `internal-error` | Server error |
-| 502 | `upstream-error` | Target site error |
-| 503 | `service-unavailable` | Service temporarily unavailable |
+The proxy is used for all Playwright and Camoufox browsing sessions. You can also start a local rotating proxy server:
+
+```bash
+npx spectrawl proxy --port 8080
+```
 
 ## MCP Server
 
@@ -532,51 +534,13 @@ npx spectrawl mcp
 
 ### MCP Tools
 
-#### `web_search`
-Search the web using the engine cascade.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `query` | string | ✅ | Search query |
-| `summarize` | boolean | | Generate LLM summary with citations |
-| `scrapeTop` | number | | Number of top results to scrape (default: 3) |
-| `minResults` | number | | Minimum results before trying next engine (default: 5) |
-
-#### `web_browse`
-Browse a URL with stealth anti-detection.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `url` | string | ✅ | URL to browse |
-| `auth` | string | | Platform name for stored auth (e.g. "reddit") |
-| `screenshot` | boolean | | Take a screenshot |
-| `html` | boolean | | Return raw HTML |
-| `stealth` | boolean | | Force stealth browser mode |
-
-#### `web_act`
-Perform an authenticated platform action.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `platform` | string | ✅ | Platform name (x, reddit, devto, hashnode, linkedin, ih) |
-| `action` | string | ✅ | Action (post, comment, like, delete) |
-| `account` | string | | Account handle (e.g. @myhandle) |
-| `text` | string | | Text content |
-| `title` | string | | Title (Reddit/Dev.to) |
-| `subreddit` | string | | Subreddit name (Reddit only) |
-| `tags` | string[] | | Tags (Dev.to only) |
-
-#### `web_auth`
-Manage platform authentication.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `action` | string | ✅ | Auth action (list, add, remove) |
-| `platform` | string | | Platform name |
-| `account` | string | | Account handle |
-
-#### `web_status`
-Check health status of all authenticated accounts. No parameters.
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `web_search` | Search the web | `query`, `summarize`, `scrapeTop`, `minResults` |
+| `web_browse` | Stealth browse a URL | `url`, `auth`, `screenshot`, `html` |
+| `web_act` | Platform action | `platform`, `action`, `account`, `text`, `title` |
+| `web_auth` | Manage auth | `action` (list/add/remove), `platform`, `account` |
+| `web_status` | Check auth health | — |
 
 ## CLI
 
@@ -586,13 +550,14 @@ npx spectrawl search "query"    # search from terminal
 npx spectrawl status            # check auth health
 npx spectrawl serve             # start HTTP server
 npx spectrawl mcp               # start MCP server
-npx spectrawl install-stealth   # download Camoufox browser
 npx spectrawl proxy             # start rotating proxy server
+npx spectrawl install-stealth   # download Camoufox browser
+npx spectrawl version           # show version
 ```
 
 ## Configuration
 
-`spectrawl.json` — all fields are optional, defaults shown:
+`spectrawl.json` — full defaults:
 
 ```json
 {
@@ -600,18 +565,11 @@ npx spectrawl proxy             # start rotating proxy server
   "concurrency": 3,
   "search": {
     "cascade": ["gemini-grounded", "tavily", "brave"],
-    "scrapeTop": 5,
-    "searxng": { "url": "http://localhost:8888" },
-    "llm": null
+    "scrapeTop": 5
   },
   "browse": {
     "defaultEngine": "playwright",
-    "proxy": {
-      "host": "proxy.example.com",
-      "port": 8080,
-      "username": "user",
-      "password": "pass"
-    },
+    "proxy": null,
     "humanlike": {
       "minDelay": 500,
       "maxDelay": 2000,
@@ -635,21 +593,19 @@ npx spectrawl proxy             # start rotating proxy server
 }
 ```
 
-| Config | What it does |
-|--------|-------------|
-| `concurrency` | Max parallel browser contexts (default: 3) |
-| `browse.humanlike` | Delays and scroll behavior to mimic human browsing |
-| `browse.proxy` | Route all browse requests through a proxy |
-| `cache.searchTtl` | Search cache lifetime in seconds (default: 1h) |
-| `cache.scrapeTtl` | Page scrape cache lifetime (default: 24h) |
-| `cache.screenshotTtl` | Screenshot cache lifetime (default: 1h) |
-| `auth.refreshInterval` | How often to check cookie health (default: 4h) |
-| `rateLimit.*` | Per-platform rate limits for `/act` |
+### Human-like Browsing
+
+Spectrawl simulates human browsing patterns by default:
+
+- **Random delays** between page loads (500-2000ms)
+- **Scroll behavior** simulation
+- **Random viewport sizes** from common resolutions
+- Configurable via `browse.humanlike`
 
 ## Environment Variables
 
 ```
-GEMINI_API_KEY      Free — primary search + summarization + CAPTCHA solving (aistudio.google.com)
+GEMINI_API_KEY      Free — primary search + summarization (aistudio.google.com)
 BRAVE_API_KEY       Brave Search (2,000 free/month)
 TAVILY_API_KEY      Tavily Search (1,000 free/month)
 SERPER_API_KEY      Serper.dev (2,500 trial queries)
@@ -663,7 +619,3 @@ ANTHROPIC_API_KEY   Alternative LLM for summarization
 ## License
 
 MIT
-
-## Part of xanOS
-
-Spectrawl is the web layer for [xanOS](https://github.com/FayAndXan/xanOS) — the autonomous content engine. Use it standalone or as part of the full stack.
