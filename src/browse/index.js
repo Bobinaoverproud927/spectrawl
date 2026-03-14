@@ -103,6 +103,73 @@ class BrowseEngine {
    * Returns a function that fetches content via alternative methods.
    */
   _getSiteOverride(url) {
+    // X/Twitter: articles and posts can't be browsed without login
+    // Fallback: xAI Responses API with x_search tool (reads X posts natively)
+    if ((url.includes('x.com/') || url.includes('twitter.com/')) && url.includes('/status/')) {
+      return async (originalUrl, opts) => {
+        const xaiKey = process.env.XAI_API_KEY
+        if (!xaiKey) return null // no key, fall through to normal browse
+
+        try {
+          const https = require('https')
+          const body = JSON.stringify({
+            model: 'grok-4-1-fast-non-reasoning',
+            input: [{ role: 'user', content: `Return the FULL exact text of this X post and all replies/thread if it's a thread. Include the author's name and handle. No commentary, no analysis, just the raw content:\n\n${originalUrl}` }],
+            tools: [{ type: 'x_search' }]
+          })
+
+          const content = await new Promise((resolve, reject) => {
+            const req = https.request({
+              hostname: 'api.x.ai',
+              path: '/v1/responses',
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${xaiKey}`,
+                'Content-Length': Buffer.byteLength(body)
+              },
+              timeout: 30000
+            }, res => {
+              let data = ''
+              res.on('data', c => data += c)
+              res.on('end', () => {
+                try {
+                  const json = JSON.parse(data)
+                  if (json.error) return resolve(null)
+                  const output = json.output || []
+                  for (const o of output) {
+                    if (o.type === 'message') {
+                      for (const c of (o.content || [])) {
+                        if (c.text && c.text.length > 20) return resolve(c.text)
+                      }
+                    }
+                  }
+                  resolve(null)
+                } catch { resolve(null) }
+              })
+            })
+            req.on('error', () => resolve(null))
+            req.setTimeout(30000, () => { req.destroy(); resolve(null) })
+            req.write(body)
+            req.end()
+          })
+
+          if (content && content.length > 20) {
+            return {
+              content,
+              url: originalUrl,
+              title: 'X Post (via xAI)',
+              statusCode: 200,
+              cached: false,
+              engine: 'xai-x-search',
+              blocked: false
+            }
+          }
+        } catch (e) { /* fall through */ }
+        return null // fall through to normal browse
+      }
+    }
+
     // Reddit: datacenter IPs are fully blocked (browse, JSON, RSS all fail)
     // Fallback: PullPush API (free Reddit archive, no auth, no IP block)
     if (url.includes('reddit.com')) {
