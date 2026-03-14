@@ -104,42 +104,90 @@ class BrowseEngine {
    */
   _getSiteOverride(url) {
     // Reddit: datacenter IPs are fully blocked (browse, JSON, RSS all fail)
-    // Fallback: return block info with actionable message + try Jina
+    // Fallback: PullPush API (free Reddit archive, no auth, no IP block)
     if (url.includes('reddit.com')) {
       return async (originalUrl, opts) => {
-        // Try Jina Reader first (sometimes works)
         try {
-          const jinaUrl = `https://r.jina.ai/${originalUrl}`
+          const parsed = new URL(originalUrl)
+          const pathParts = parsed.pathname.split('/').filter(Boolean)
+          
+          // Extract subreddit and post ID from URL
+          let subreddit = null, postId = null, isComments = false
+          for (let i = 0; i < pathParts.length; i++) {
+            if (pathParts[i] === 'r' && pathParts[i + 1]) subreddit = pathParts[i + 1]
+            if (pathParts[i] === 'comments' && pathParts[i + 1]) { postId = pathParts[i + 1]; isComments = true }
+          }
+
           const h = require('https')
-          const content = await new Promise((resolve, reject) => {
-            const req = h.get(jinaUrl, { 
-              headers: { 'Accept': 'text/plain', 'User-Agent': 'Spectrawl/1.0' },
+          const fetchJson = (apiUrl) => new Promise((resolve) => {
+            const req = h.get(apiUrl, { 
+              headers: { 'User-Agent': 'Spectrawl/0.6.1' },
               timeout: 10000
             }, res => {
               if (res.statusCode !== 200) return resolve(null)
               let data = ''
               res.on('data', c => data += c)
-              res.on('end', () => resolve(data))
+              res.on('end', () => { try { resolve(JSON.parse(data)) } catch { resolve(null) } })
             })
             req.on('error', () => resolve(null))
             req.setTimeout(10000, () => { req.destroy(); resolve(null) })
           })
 
-          if (content && content.length > 200 && !content.includes('blocked by network')) {
+          let content = ''
+
+          if (postId) {
+            // Specific thread: get post + comments
+            const postData = await fetchJson(`https://api.pullpush.io/reddit/search/submission/?ids=${postId}`)
+            const comments = await fetchJson(`https://api.pullpush.io/reddit/search/comment/?link_id=${postId}&size=25&sort=score&sort_type=desc`)
+            
+            if (postData?.data?.[0]) {
+              const post = postData.data[0]
+              content = `# ${post.title}\n\nby u/${post.author} in r/${post.subreddit} | ${post.score} points | ${post.num_comments} comments\n\n${post.selftext || post.url || ''}\n\n---\n\n## Comments\n\n`
+              if (comments?.data) {
+                for (const c of comments.data) {
+                  content += `**u/${c.author}** (${c.score} pts):\n${c.body}\n\n`
+                }
+              }
+            }
+          } else if (subreddit) {
+            // Subreddit listing
+            const sort = parsed.pathname.includes('/top') ? 'score' : 'created_utc'
+            const order = sort === 'score' ? 'desc' : 'desc'
+            const data = await fetchJson(`https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=25&sort=${sort}&sort_type=${order}`)
+            
+            if (data?.data) {
+              content = `# r/${subreddit}\n\n`
+              for (const post of data.data) {
+                content += `- **${post.title}** (${post.score} pts, ${post.num_comments} comments) by u/${post.author}\n  ${post.url || ''}\n  ${(post.selftext || '').slice(0, 200)}\n\n`
+              }
+            }
+          } else {
+            // Generic Reddit URL — try search
+            const query = parsed.searchParams.get('q') || pathParts.join(' ')
+            if (query) {
+              const data = await fetchJson(`https://api.pullpush.io/reddit/search/submission/?q=${encodeURIComponent(query)}&size=15&sort=score&sort_type=desc`)
+              if (data?.data) {
+                content = `# Reddit search: ${query}\n\n`
+                for (const post of data.data) {
+                  content += `- **${post.title}** in r/${post.subreddit} (${post.score} pts) by u/${post.author}\n  ${(post.selftext || '').slice(0, 200)}\n\n`
+                }
+              }
+            }
+          }
+
+          if (content && content.length > 50) {
             return {
               content,
               url: originalUrl,
-              title: 'Reddit (via Jina Reader)',
+              title: subreddit ? `r/${subreddit}` : 'Reddit',
               statusCode: 200,
               cached: false,
-              engine: 'jina-reader',
+              engine: 'pullpush-api',
               blocked: false
             }
           }
-        } catch (e) { /* try next */ }
+        } catch (e) { /* fall through */ }
 
-        // All direct methods fail from datacenter IPs
-        // Return explicit block with guidance
         return {
           content: '',
           url: originalUrl,
@@ -149,7 +197,7 @@ class BrowseEngine {
           engine: 'blocked',
           blocked: true,
           blockType: 'reddit',
-          blockDetail: 'Reddit blocks all datacenter IPs. Use /search with a Reddit-related query to get cached Reddit content via Google, or configure a residential proxy.'
+          blockDetail: 'Reddit blocked and PullPush API unavailable. Use /search with a Reddit-related query to get cached content, or configure a residential proxy.'
         }
       }
     }
