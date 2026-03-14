@@ -626,7 +626,21 @@ class BrowseEngine {
     const context = await this._createContext(browser, opts)
 
     if (opts._cookies) {
-      await context.addCookies(opts._cookies)
+      const playwrightCookies = opts._cookies.map(c => {
+        const clean = { ...c }
+        if (!clean.sameSite || !['Strict', 'Lax', 'None'].includes(clean.sameSite)) {
+          clean.sameSite = 'Lax'
+        }
+        if (clean.domain && clean.domain.startsWith('.')) {
+          clean.domain = clean.domain.slice(1)
+        }
+        delete clean.hostOnly; delete clean.session; delete clean.storeId; delete clean.id
+        if (clean.expirationDate && !clean.expires) {
+          clean.expires = clean.expirationDate; delete clean.expirationDate
+        }
+        return clean
+      })
+      await context.addCookies(playwrightCookies)
     }
 
     const page = await context.newPage()

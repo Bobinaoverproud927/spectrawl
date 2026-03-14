@@ -171,6 +171,49 @@ Spectrawl detects block/challenge pages from **8 anti-bot services** and reports
 
 When a block is detected, the response includes `blocked: true` and `blockInfo: { type, detail }`.
 
+### Site-Specific Fallbacks
+
+Some sites block all datacenter IPs regardless of stealth. Spectrawl automatically routes these through alternative APIs:
+
+| Site | Problem | Fallback | Cost |
+|------|---------|----------|------|
+| **Reddit** | Blocks all datacenter IPs | [PullPush API](https://api.pullpush.io) — Reddit archive | Free |
+| **Amazon** | CAPTCHA wall on product pages | [Jina Reader](https://r.jina.ai) — server-side rendering | Free |
+| **X/Twitter** | Login wall on posts | [xAI Responses API](https://docs.x.ai) with `x_search` | ~$0.06/post |
+| **LinkedIn** | HTTP 999, IP fingerprinting | Requires residential proxy (see below) | ~$7/GB |
+
+These fallbacks activate automatically — just `browse()` the URL and Spectrawl picks the right path. No config needed for Reddit and Amazon. X requires `XAI_API_KEY` env var. LinkedIn requires a residential proxy.
+
+#### LinkedIn: Why It's Different
+
+LinkedIn fingerprints the IP where cookies were created. Even valid cookies get rejected from a different IP. Every free approach fails from datacenter servers:
+
+- Direct browse: HTTP 999
+- Voyager API with cookies: 401 (IP mismatch)
+- Jina Reader: empty response
+- Facebook/Googlebot UA: 317K of CSS, zero content
+
+**The only working solution is a residential proxy.** We recommend [Smartproxy](https://smartproxy.com) ($7/GB pay-as-you-go, 55M residential IPs, 3-day free trial). At typical usage (~10 LinkedIn pages/month), cost is under $0.50/month.
+
+Setup:
+```bash
+# Add your proxy to Spectrawl config
+npx spectrawl config set proxy '{"host":"gate.smartproxy.com","port":10001,"username":"YOUR_USER","password":"YOUR_PASS"}'
+
+# Store your LinkedIn cookies (export from browser)
+npx spectrawl login linkedin --account yourname --cookies ./linkedin-cookies.json
+
+# Now browse LinkedIn normally
+curl localhost:3900/browse -d '{"url":"https://www.linkedin.com/in/someone"}'
+```
+
+Other residential proxy providers that work:
+- [IPRoyal](https://iproyal.com) — $7/GB, 32M IPs
+- [Bright Data](https://brightdata.com) — premium quality, higher cost
+- [Oxylabs](https://oxylabs.io) — enterprise-grade
+
+> ⚠️ **Avoid WebShare** — recycled datacenter IPs marketed as residential, no HTTPS support.
+
 ### CAPTCHA Solving
 
 Built-in CAPTCHA solver using **Gemini Vision** (free tier: 1,500 req/day):
@@ -685,26 +728,35 @@ Error types: `bad-request` (400), `unauthorized` (401), `forbidden` (403), `not-
 
 ## Proxy Configuration
 
-Route browsing through residential or datacenter proxies:
+Route browsing through residential or datacenter proxies. **Required for LinkedIn** — see [Site-Specific Fallbacks](#site-specific-fallbacks) for why.
 
 ```json
 {
   "browse": {
     "proxy": {
-      "host": "proxy.example.com",
-      "port": 8080,
-      "username": "user",
-      "password": "pass"
+      "host": "gate.smartproxy.com",
+      "port": 10001,
+      "username": "YOUR_USER",
+      "password": "YOUR_PASS"
     }
   }
 }
 ```
 
-The proxy is used for all Playwright and Camoufox browsing sessions. You can also start a local rotating proxy server:
+The proxy is used for all Playwright and Camoufox browsing sessions. You can also start a local rotating proxy server that rotates through multiple upstream proxies:
 
 ```bash
 npx spectrawl proxy --port 8080
 ```
+
+**Recommended providers:**
+
+| Provider | Price | IPs | Best For |
+|----------|-------|-----|----------|
+| [Smartproxy](https://smartproxy.com) | $7/GB | 55M | Best budget option, 3-day free trial |
+| [IPRoyal](https://iproyal.com) | $7/GB | 32M | Good alternative |
+| [Bright Data](https://brightdata.com) | $12+/GB | 72M | Best quality, enterprise |
+| [Oxylabs](https://oxylabs.io) | $10+/GB | 100M+ | Enterprise-grade |
 
 ## MCP Server
 

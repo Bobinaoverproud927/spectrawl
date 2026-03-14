@@ -16,6 +16,8 @@ class XAdapter {
     switch (action) {
       case 'post':
         return this._post(params, ctx)
+      case 'article':
+        return this._postArticle(params, ctx)
       case 'like':
         return this._like(params, ctx)
       case 'retweet':
@@ -124,6 +126,235 @@ class XAdapter {
     })
 
     return { tweetId: data.data?.id, url: `https://x.com/i/status/${data.data?.id}` }
+  }
+
+  /**
+   * Post an X Article (long-form) via browser automation.
+   * X API doesn't support articles — must use the web composer.
+   * 
+   * Flow:
+   * 1. Navigate to /compose/articles (article list)
+   * 2. Find existing draft or create new article via GraphQL
+   * 3. Navigate to /compose/articles/edit/{articleId}
+   * 4. Fill title (data-testid="twitter-article-title") and body (contenteditable)
+   * 5. Auto-save triggers, or click Publish
+   * 
+   * @param {object} params - { title, body, account, _cookies, publish, articleId }
+   * publish: true = auto-publish, false = save as draft (default: false for safety)
+   * articleId: edit existing article (optional)
+   */
+  async _postArticle(params, ctx) {
+    const { title, body, account, _cookies, publish = false, articleId } = params
+
+    if (!_cookies) {
+      throw new Error(`No auth for X/${account}. Run: spectrawl login x --account ${account}`)
+    }
+    if (!title) throw new Error('X article requires a title')
+    if (!body) throw new Error('X article requires a body')
+
+    // Step 1: Get article editor URL
+    let editorUrl
+    if (articleId) {
+      editorUrl = `https://x.com/compose/articles/edit/${articleId}`
+    } else {
+      // First go to articles list to find/create an article
+      const { page: listPage, context: listCtx } = await ctx.browse.getPage({
+        _cookies,
+        url: 'https://x.com/compose/articles'
+      })
+
+      try {
+        await listPage.waitForTimeout(2000 + Math.random() * 1000)
+
+        // Try to create a new article via the GraphQL API
+        const csrfToken = _cookies.find(c => c.name === 'ct0')?.value
+        const newArticleId = await listPage.evaluate(async (csrf) => {
+          try {
+            const res = await fetch('https://x.com/i/api/graphql/uKxr91kGF4E4mdN-G3x0Yw/CreateArticle', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Csrf-Token': csrf,
+                'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+                'X-Twitter-Auth-Type': 'OAuth2Session'
+              },
+              body: JSON.stringify({
+                variables: {},
+                queryId: 'uKxr91kGF4E4mdN-G3x0Yw'
+              })
+            })
+            const data = await res.json()
+            return data?.data?.article_create?.article_results?.result?.rest_id || null
+          } catch { return null }
+        }, csrfToken)
+
+        if (newArticleId) {
+          editorUrl = `https://x.com/compose/articles/edit/${newArticleId}`
+        } else {
+          // Fallback: find existing draft link or the write button
+          const draftLink = await listPage.$('a[href*="/compose/articles/edit/"]')
+          if (draftLink) {
+            const href = await draftLink.getAttribute('href')
+            editorUrl = `https://x.com${href}`
+          } else {
+            // Last resort: look for a "new article" / "write" link
+            editorUrl = await listPage.evaluate(() => {
+              const links = Array.from(document.querySelectorAll('a[href*="article"]'))
+              for (const l of links) {
+                if (l.textContent.toLowerCase().includes('write') || l.textContent.toLowerCase().includes('new')) {
+                  return l.href
+                }
+              }
+              return null
+            })
+          }
+        }
+
+        await listPage.close()
+      } catch (e) {
+        await listPage.close().catch(() => {})
+        throw e
+      }
+    }
+
+    if (!editorUrl) {
+      throw new Error('Could not find or create X article editor. Try passing articleId directly.')
+    }
+
+    // Step 2: Open the article editor
+    const { page, context } = await ctx.browse.getPage({
+      _cookies,
+      url: editorUrl
+    })
+
+    try {
+      await page.waitForTimeout(2000 + Math.random() * 1000)
+
+      // Check we're in the editor
+      const hasEditor = await page.$('[data-testid="twitter-article-title"], [contenteditable="true"]')
+      if (!hasEditor) {
+        const content = await page.evaluate(() => document.body.innerText)
+        throw new Error(`Not in article editor. Page content: ${content.slice(0, 200)}`)
+      }
+
+      // Step 3: Fill the title
+      // Title: data-testid="twitter-article-title" or placeholder "Add a title"
+      // Must click and type — execCommand doesn't work on this component
+      const titleEl = await page.$('[data-testid="twitter-article-title"]')
+      if (titleEl) {
+        await titleEl.click()
+        await page.waitForTimeout(300)
+        // Select all existing text and replace
+        await page.keyboard.down('Control')
+        await page.keyboard.press('a')
+        await page.keyboard.up('Control')
+        await page.waitForTimeout(100)
+        await page.keyboard.type(title, { delay: 15 + Math.random() * 25 })
+      } else {
+        // Fallback: find by placeholder
+        await page.evaluate(() => {
+          const el = document.querySelector('[data-placeholder="Add a title"]')
+          if (el) { el.click(); el.focus() }
+        })
+        await page.waitForTimeout(300)
+        await page.keyboard.type(title, { delay: 15 + Math.random() * 25 })
+      }
+
+      await page.waitForTimeout(500 + Math.random() * 500)
+
+      // Step 4: Fill the body
+      // Body has placeholder "Start writing" — it's a contenteditable div
+      // Click it directly to avoid navigating away
+      const bodyFilled = await page.evaluate((bodyText) => {
+        // Find body editor — the one with "Start writing" placeholder
+        const candidates = document.querySelectorAll('[contenteditable="true"]')
+        let bodyEl = null
+        for (const el of candidates) {
+          const placeholder = el.getAttribute('data-placeholder') || el.getAttribute('aria-describedby') || ''
+          const text = el.textContent || ''
+          // The body editor usually has "Start writing" or is the main content area
+          if (placeholder.includes('writing') || placeholder.includes('Start') || 
+              text.includes('Start writing') || el.getAttribute('aria-multiline') === 'true') {
+            bodyEl = el
+            break
+          }
+        }
+        // If not found by placeholder, take the contenteditable that's NOT the title
+        if (!bodyEl) {
+          const title = document.querySelector('[data-testid="twitter-article-title"]')
+          for (const el of candidates) {
+            if (el !== title && !title?.contains(el)) {
+              bodyEl = el
+              break
+            }
+          }
+        }
+        if (!bodyEl) return false
+
+        bodyEl.focus()
+        // Use insertText for proper React/editor state
+        document.execCommand('selectAll', false, null)
+        document.execCommand('insertText', false, bodyText)
+        return true
+      }, body)
+
+      if (!bodyFilled) {
+        // Fallback: click on "Start writing" text and type
+        const bodyArea = await page.evaluate(() => {
+          const els = document.querySelectorAll('[contenteditable="true"]')
+          for (const el of els) {
+            if (el.textContent.includes('Start writing') || el.getAttribute('aria-multiline') === 'true') {
+              el.click()
+              el.focus()
+              return true
+            }
+          }
+          return false
+        })
+        if (bodyArea) {
+          await page.waitForTimeout(300)
+          await page.keyboard.type(body, { delay: 5 })
+        }
+      }
+
+      await page.waitForTimeout(1500) // Let auto-save trigger
+
+      // Take screenshot for verification
+      const screenshot = await page.screenshot({ type: 'png' }).catch(() => null)
+      const draftUrl = page.url()
+
+      if (publish) {
+        // Find and click Publish button
+        const pubBtn = await page.$('button:has-text("Publish"), [role="button"]:has-text("Publish")')
+        if (pubBtn) {
+          await pubBtn.click()
+          await page.waitForTimeout(3000 + Math.random() * 2000)
+
+          // Handle confirmation dialog if present
+          const confirmBtn = await page.$('button:has-text("Publish"), [data-testid*="confirm"]')
+          if (confirmBtn) {
+            await confirmBtn.click()
+            await page.waitForTimeout(3000)
+          }
+        }
+
+        const finalUrl = page.url()
+        await page.close()
+        return { url: finalUrl, status: 'published', title }
+      } else {
+        await page.close()
+        return {
+          url: draftUrl,
+          status: 'draft',
+          title,
+          screenshot: screenshot ? screenshot.toString('base64') : null,
+          message: 'Article saved as draft. Set publish: true to auto-publish, or review at: ' + draftUrl
+        }
+      }
+    } catch (e) {
+      await page.close().catch(() => {})
+      throw e
+    }
   }
 
   async _like(params, ctx) {
