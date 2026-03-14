@@ -78,6 +78,13 @@ class Spectrawl {
       const cookies = await this.auth.getCookies(opts.auth)
       opts._cookies = cookies
     }
+    // Auto-inject stored cookies for sites that require auth (LinkedIn, etc.)
+    if (!opts._cookies && !opts.auth && url.includes('linkedin.com')) {
+      try {
+        const cookies = await this.auth.getCookies('linkedin')
+        if (cookies && cookies.length > 0) opts._cookies = cookies
+      } catch (e) { /* no stored cookies, proceed without */ }
+    }
     return this.browseEngine.browse(url, opts)
   }
 

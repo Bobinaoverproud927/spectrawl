@@ -202,6 +202,54 @@ class BrowseEngine {
       }
     }
 
+    // LinkedIn: use stored cookies + proxy to browse authenticated
+    if (url.includes('linkedin.com')) {
+      return async (originalUrl, opts) => {
+        // Cookies are auto-injected by parent Spectrawl.browse() from auth DB
+        const cookies = opts._cookies
+
+        if (!cookies || cookies.length === 0) {
+          return {
+            content: '',
+            url: originalUrl,
+            title: 'LinkedIn',
+            statusCode: 401,
+            cached: false,
+            engine: 'blocked',
+            blocked: true,
+            blockType: 'linkedin',
+            blockDetail: 'LinkedIn requires authentication. Add cookies: spectrawl login linkedin --account yourname'
+          }
+        }
+
+        try {
+          // Browse with cookies via Camoufox (needs residential proxy to avoid IP mismatch)
+          const browseResult = await this.browse(originalUrl, { 
+            ...opts, 
+            _skipOverride: true,
+            stealth: true,
+            camoufox: true 
+          })
+
+          if (browseResult && !browseResult.blocked && (browseResult.content || '').length > 200) {
+            return { ...browseResult, engine: 'linkedin-authenticated' }
+          }
+        } catch (e) { /* redirect loop or block — expected without proxy */ }
+
+        return {
+          content: '',
+          url: originalUrl,
+          title: 'LinkedIn',
+          statusCode: 999,
+          cached: false,
+          engine: 'blocked',
+          blocked: true,
+          blockType: 'linkedin',
+          blockDetail: 'LinkedIn cookies valid but rejected from this IP (datacenter). Configure a residential proxy: spectrawl config set proxy.upstreams "[{\\"url\\":\\"http://user:pass@host:port\\"}]"'
+        }
+      }
+    }
+
     // Amazon: try Jina Reader  
     if (url.includes('amazon.com') || url.includes('amazon.co')) {
       return async (originalUrl, opts) => {
@@ -333,7 +381,26 @@ class BrowseEngine {
 
     try {
       if (opts._cookies) {
-        await context.addCookies(opts._cookies)
+        // Sanitize cookies for Playwright compatibility
+        const playwrightCookies = opts._cookies.map(c => {
+          const clean = { ...c }
+          if (!clean.sameSite || !['Strict', 'Lax', 'None'].includes(clean.sameSite)) {
+            clean.sameSite = 'Lax'
+          }
+          if (clean.domain && clean.domain.startsWith('.')) {
+            clean.domain = clean.domain.slice(1)
+          }
+          delete clean.hostOnly
+          delete clean.session
+          delete clean.storeId
+          delete clean.id
+          if (clean.expirationDate && !clean.expires) {
+            clean.expires = clean.expirationDate
+            delete clean.expirationDate
+          }
+          return clean
+        })
+        await context.addCookies(playwrightCookies)
       }
 
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
